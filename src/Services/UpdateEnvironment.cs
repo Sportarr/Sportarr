@@ -31,6 +31,12 @@ public interface IUpdateEnvironment
     IReadOnlyList<string> Arguments { get; }
     int ProcessId { get; }
     DateTime ProcessStartUtc { get; }
+    /// <summary>
+    /// The start of this process on the monotonic clock of
+    /// TimeProvider.System. A later change of the wall clock does not move
+    /// it. The uptime waits use it.
+    /// </summary>
+    long ProcessStartTimestamp { get; }
     string? Os { get; }
     string? Arch { get; }
     bool IsContainer { get; }
@@ -53,15 +59,111 @@ public sealed class SystemUpdateEnvironment : IUpdateEnvironment
     // otherwise refused. No setting, API or page can change it.
     public const string AllowContainerVariable = "SPORTARR_UPDATE_ALLOW_CONTAINER";
 
+    /// <summary>
+    /// The container switch counts only together with a loopback update
+    /// source. So it works for the local test setup and nowhere else.
+    /// </summary>
+    internal static bool AllowContainerHonoured(string? allow, string? apiBase) =>
+        string.Equals(allow, "true", StringComparison.OrdinalIgnoreCase) &&
+        LatestReleaseClient.LoopbackOverride(apiBase) != null;
+
+    private static bool AllowContainerHonoured() =>
+        AllowContainerHonoured(Environment.GetEnvironmentVariable(AllowContainerVariable),
+            Environment.GetEnvironmentVariable(LatestReleaseClient.ApiBaseOverrideVariable));
+
+    /// <summary>
+    /// Writes and deletes a probe file. A good write with a delete that
+    /// fails on a sharing violation still counts as writable, because a
+    /// virus scanner can hold the new file for a moment. Any other delete
+    /// failure, for example missing rights, counts as not writable.
+    /// </summary>
+    internal static bool ProbeWritable(string probe, Action<string> write, Action<string> delete, Action<Exception> onDeleteFailed)
+    {
+        try
+        {
+            write(probe);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        try
+        {
+            delete(probe);
+        }
+        catch (IOException ex) when (IsSharingViolation(ex))
+        {
+            onDeleteFailed(ex);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    internal const string ProbePrefix = ".sportarr-write-test-";
+
+    /// <summary>
+    /// Removes probe files older than one hour. A probe file stays behind
+    /// when its delete fails. Failures here do not matter.
+    /// </summary>
+    internal static void RemoveOldProbes(string folder, DateTime nowUtc)
+    {
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(folder, ProbePrefix + "*"))
+            {
+                try
+                {
+                    if (nowUtc - File.GetLastWriteTimeUtc(file) > TimeSpan.FromHours(1))
+                        File.Delete(file);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// True for a Windows sharing or lock violation. Another process, for
+    /// example a virus scanner, holds the file.
+    /// </summary>
+    internal static bool IsSharingViolation(IOException ex) => (ex.HResult & 0xFFFF) is 32 or 33;
+
+    internal const string LaunchdProblem =
+        "Sportarr runs under launchd, which stops the update helper together with Sportarr. Update it by hand from the releases page.";
+
+    internal const string UserServiceProblem =
+        "Sportarr runs as a systemd user service, which the built-in update does not support. Run Sportarr as a system service.";
+
     private readonly ILogger<SystemUpdateEnvironment> _logger;
     private UpdateRestartTarget? _restart;
 
     public SystemUpdateEnvironment(ILogger<SystemUpdateEnvironment> logger)
     {
         _logger = logger;
+        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable(AllowContainerVariable)))
+        {
+            if (AllowContainerHonoured())
+                _logger.LogWarning("[Update] TEST ONLY: {Variable} is set, so this container counts as a normal install", AllowContainerVariable);
+            else
+                _logger.LogWarning("[Update] {Variable} is set without a loopback {Source}, so Sportarr ignores it",
+                    AllowContainerVariable, LatestReleaseClient.ApiBaseOverrideVariable);
+        }
         using var current = Process.GetCurrentProcess();
         ProcessId = current.Id;
         ProcessStartUtc = current.StartTime.ToUniversalTime();
+        // Turn the uptime so far into a point on the monotonic clock. Only a
+        // clock change in the first moments of the process can skew it.
+        var uptime = DateTime.UtcNow - ProcessStartUtc;
+        ProcessStartTimestamp = TimeProvider.System.GetTimestamp() -
+            (long)(Math.Max(0, uptime.TotalSeconds) * TimeProvider.System.TimestampFrequency);
     }
 
     public string InstallDir => Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
@@ -72,6 +174,7 @@ public sealed class SystemUpdateEnvironment : IUpdateEnvironment
     public IReadOnlyList<string> Arguments => Environment.GetCommandLineArgs().Skip(1).ToList();
     public int ProcessId { get; }
     public DateTime ProcessStartUtc { get; }
+    public long ProcessStartTimestamp { get; }
     public string? Os => LatestReleaseClient.CurrentOs();
     public string? Arch => LatestReleaseClient.CurrentArch();
 
@@ -79,15 +182,27 @@ public sealed class SystemUpdateEnvironment : IUpdateEnvironment
     {
         get
         {
-            if (string.Equals(Environment.GetEnvironmentVariable(AllowContainerVariable), "true", StringComparison.OrdinalIgnoreCase))
+            if (AllowContainerHonoured())
                 return false;
             if (string.Equals(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"), "true", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (ContainerVariableMeansContainer(Environment.GetEnvironmentVariable("container")))
                 return true;
             if (File.Exists("/.dockerenv") || File.Exists("/run/.containerenv"))
                 return true;
             return CgroupLooksLikeContainer(ReadFile("/proc/1/cgroup"));
         }
     }
+
+    /// <summary>
+    /// Podman and other runtimes set the "container" variable. LXC and
+    /// systemd-nspawn set it too. They run a full system with its own init,
+    /// so the built-in update works there.
+    /// </summary>
+    internal static bool ContainerVariableMeansContainer(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        !value.StartsWith("lxc", StringComparison.OrdinalIgnoreCase) &&
+        !value.Equals("systemd-nspawn", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// An application container shows its runtime in the cgroup path. An
@@ -104,17 +219,11 @@ public sealed class SystemUpdateEnvironment : IUpdateEnvironment
 
     public bool IsDirectoryWritable(string path)
     {
-        try
-        {
-            var probe = Path.Combine(path, $".sportarr-write-test-{Guid.NewGuid():N}");
-            File.WriteAllText(probe, "");
-            File.Delete(probe);
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return false;
-        }
+        RemoveOldProbes(path, DateTime.UtcNow);
+        return ProbeWritable(Path.Combine(path, $"{ProbePrefix}{Guid.NewGuid():N}"),
+            probe => File.WriteAllText(probe, ""),
+            File.Delete,
+            ex => _logger.LogWarning(ex, "[Update] Sportarr wrote a test file in {Path} but could not delete it. The folder counts as writable", path));
     }
 
     public string VolumeOf(string path)
@@ -159,8 +268,7 @@ public sealed class SystemUpdateEnvironment : IUpdateEnvironment
         // process 1, as its parent. A start from a terminal has the shell.
         if (OperatingSystem.IsMacOS() && GetParentProcessId() == 1)
         {
-            return new UpdateRestartTarget(UpdateRestartMode.Process, "",
-                "Sportarr runs under launchd, which stops the update helper together with Sportarr. Use the Script or External mechanism.");
+            return new UpdateRestartTarget(UpdateRestartMode.Process, "", LaunchdProblem);
         }
 
         if (OperatingSystem.IsLinux() && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("INVOCATION_ID")))
@@ -172,8 +280,7 @@ public sealed class SystemUpdateEnvironment : IUpdateEnvironment
             {
                 // A user manager has its own settings and its own rights.
                 // The checks below do not cover it, so refuse.
-                return new UpdateRestartTarget(UpdateRestartMode.Process, "",
-                    "Sportarr runs as a systemd user service. The built-in update does not support user services. Run Sportarr as a system service, or use the Script or External mechanism.");
+                return new UpdateRestartTarget(UpdateRestartMode.Process, "", UserServiceProblem);
             }
             var unit = SystemdUnitFromCgroup(cgroup);
             if (unit == null)

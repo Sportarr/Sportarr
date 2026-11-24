@@ -7,14 +7,13 @@ import { runSettingsSave } from '../../hooks/useSettings';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import {
-  UPDATE_MECHANISM_OPTIONS,
-  automaticUpdatesApply,
+  DOCKER_UPDATE_TEXT,
+  SCRIPT_UPDATE_TEXT,
   installBlockReason,
   isCancelled,
   isNewFailure,
   lastResultText,
-  normalizeUpdateMechanism,
-  updateMechanismHelp,
+  updateView,
   type UpdateStatus,
 } from './updateMechanismPresentation';
 
@@ -69,11 +68,16 @@ interface BackupSettings {
   backupRetention: number;
 }
 
+// Only branch and automaticUpdates are settings. The server finds the rest
+// and ignores them on a save. v4.1.12 called the tick "automatic", and the
+// server ignores that name, so this page must not send it.
 interface UpdateSettings {
   branch: string;
-  automatic: boolean;
+  automaticUpdates: boolean;
   mechanism: string;
-  scriptPath: string;
+  automaticAvailable: boolean;
+  automaticUnavailableReason: string | null;
+  scriptPath: string | null;
 }
 
 const UPDATE_POLL_INTERVAL_MS = 3000;
@@ -148,10 +152,14 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
   // Update Settings
   const [updateSettings, setUpdateSettings] = useState<UpdateSettings>({
     branch: 'main',
-    automatic: false,
+    automaticUpdates: false,
     mechanism: 'docker',
-    scriptPath: '',
+    automaticAvailable: false,
+    automaticUnavailableReason: null,
+    scriptPath: null,
   });
+  // The tick as the server stored it. A blocked install compares with it.
+  const [savedAutomaticUpdates, setSavedAutomaticUpdates] = useState(false);
 
   // Version and built-in update state from the server
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
@@ -280,10 +288,6 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
           backup: data.backupSettings ? JSON.parse(data.backupSettings) : null,
           update: data.updateSettings ? JSON.parse(data.updateSettings) : null,
         };
-        if (loadedSettings.update) {
-          loadedSettings.update.mechanism = normalizeUpdateMechanism(loadedSettings.update.mechanism);
-        }
-
         // Parse each settings category from JSON
         if (loadedSettings.host) {
           setHostSettings(loadedSettings.host);
@@ -305,6 +309,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
         }
         if (loadedSettings.update) {
           setUpdateSettings(loadedSettings.update);
+          setSavedAutomaticUpdates(loadedSettings.update.automaticUpdates === true);
         }
 
         // Store initial values for change detection
@@ -410,6 +415,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
       }
 
       // Reset unsaved changes flag after successful save
+      setSavedAutomaticUpdates(updateSettings.automaticUpdates);
       initialValues.current = {
         host: hostSettings,
         security: securitySettings,
@@ -526,6 +532,21 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
 
   // Note: In-app navigation blocking would require React Router's unstable_useBlocker
   // For now, we only block browser refresh/close via the useUnsavedChanges hook
+
+  // The server finds how this install updates. The status call checks
+  // this computer again, so its answer wins over the settings answer. That
+  // way a stale reason never sits next to a fresh status.
+  const statusKnowsAvailability = updateStatus?.automaticAvailable !== undefined;
+  const view = updateView({
+    mechanism: updateStatus?.mechanism ?? updateSettings.mechanism,
+    automaticAvailable: statusKnowsAvailability ? updateStatus?.automaticAvailable : updateSettings.automaticAvailable,
+  });
+  const automaticReason = statusKnowsAvailability
+    ? updateStatus?.automaticUnavailableReason ?? null
+    : updateSettings.automaticUnavailableReason;
+  // On a blocked install the box stays clickable while the saved tick is
+  // on, so that the user can turn it off, and on again until the save.
+  const automaticDisabled = view === 'blocked' && !savedAutomaticUpdates;
 
   return (
     <div>
@@ -1315,63 +1336,36 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
             </p>
           </div>
 
-          <div>
-            <label htmlFor="update-mechanism" className="block text-white font-medium mb-2">Mechanism</label>
-            <select
-              id="update-mechanism"
-              value={updateSettings.mechanism}
-              onChange={(e) => setUpdateSettings(prev => ({ ...prev, mechanism: e.target.value }))}
-              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-            >
-              {UPDATE_MECHANISM_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              {updateMechanismHelp(updateSettings.mechanism)}
-            </p>
-          </div>
-
-          {updateSettings.mechanism === 'script' && (
-            <div>
-              <label htmlFor="update-script-path" className="block text-white font-medium mb-2">Script Path</label>
+          {view !== 'docker' && (
+            <label className={`flex items-start space-x-3 ${automaticDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
               <input
-                id="update-script-path"
-                type="text"
-                value={updateSettings.scriptPath}
-                onChange={(e) => setUpdateSettings(prev => ({ ...prev, scriptPath: e.target.value }))}
-                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                placeholder="/path/to/update/script.sh"
+                type="checkbox"
+                checked={updateSettings.automaticUpdates}
+                disabled={automaticDisabled}
+                onChange={(e) => setUpdateSettings(prev => ({ ...prev, automaticUpdates: e.target.checked }))}
+                className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 disabled:cursor-not-allowed"
               />
-            </div>
+              <div>
+                <span className="text-white font-medium">Automatic Updates</span>
+                <p className="text-sm text-gray-400 mt-1">
+                  {view === 'script'
+                    ? `Runs ${updateSettings.scriptPath ?? 'your update script'} when a new version is out.`
+                    : 'Install new versions on their own, at a quiet moment.'}
+                </p>
+              </div>
+            </label>
           )}
 
-          <label className={`flex items-start space-x-3 ${automaticUpdatesApply(updateSettings.mechanism) ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
-            <input
-              type="checkbox"
-              checked={updateSettings.automatic}
-              disabled={!automaticUpdatesApply(updateSettings.mechanism)}
-              onChange={(e) => setUpdateSettings(prev => ({ ...prev, automatic: e.target.checked }))}
-              className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 disabled:cursor-not-allowed"
-            />
-            <div>
-              <span className="text-white font-medium">Automatic Updates</span>
-              <p className="text-sm text-gray-400 mt-1">
-                Install new versions on their own. Only applies with the Built-in and Script mechanisms.
+          <div className="pt-4 border-t border-gray-800">
+            {updateStatus?.lastResult && !installError && (
+              <p
+                role={isCancelled(updateStatus.lastResult) ? 'status' : 'alert'}
+                className={`text-sm mb-2 ${isCancelled(updateStatus.lastResult) ? 'text-amber-400' : 'text-red-400'}`}
+              >
+                {lastResultText(updateStatus.lastResult, updateSettings.automaticUpdates)}
               </p>
-            </div>
-          </label>
-
-          {updateStatus && (
-            <div className="pt-4 border-t border-gray-800">
-              {updateStatus.lastResult && !installError && (
-                <p
-                  role={isCancelled(updateStatus.lastResult) ? 'status' : 'alert'}
-                  className={`text-sm mb-2 ${isCancelled(updateStatus.lastResult) ? 'text-amber-400' : 'text-red-400'}`}
-                >
-                  {lastResultText(updateStatus.lastResult, updateSettings.automatic)}
-                </p>
-              )}
+            )}
+            {updateStatus && (
               <p className="text-sm text-gray-300">
                 <span className="text-gray-400">Current version:</span> {updateStatus.currentVersion}
                 {updateStatus.latestVersion && (
@@ -1381,28 +1375,34 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
                   </>
                 )}
               </p>
-              {normalizeUpdateMechanism(updateSettings.mechanism) === 'builtin' && (
-                <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={installUpdate}
-                    disabled={installingUpdate || installBlockReason(updateSettings.mechanism, updateStatus) !== null}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {installingUpdate ? 'Installing...' : 'Install update'}
-                  </button>
-                  {installingUpdate && (
-                    <p className="text-sm text-gray-400">Sportarr restarts when the update is installed. This page reloads then.</p>
-                  )}
-                  {!installingUpdate && (installError ?? installBlockReason(updateSettings.mechanism, updateStatus)) && (
-                    <p role={installError ? 'alert' : undefined} className={`text-sm ${installError ? 'text-red-400' : 'text-gray-400'}`}>
-                      {installError ?? installBlockReason(updateSettings.mechanism, updateStatus)}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+            )}
+            {view === 'docker' && <p className="text-sm text-gray-400 mt-2">{DOCKER_UPDATE_TEXT}</p>}
+            {view === 'script' && <p className="text-sm text-gray-400 mt-2">{SCRIPT_UPDATE_TEXT}</p>}
+            {view === 'blocked' && automaticReason && (
+              <p className="text-sm text-amber-400 mt-2">{automaticReason}</p>
+            )}
+            {(view === 'native' || view === 'blocked') && (
+              <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-3">
+                <button
+                  type="button"
+                  onClick={installUpdate}
+                  disabled={view === 'blocked' || installingUpdate || installBlockReason(updateStatus) !== null}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {installingUpdate ? 'Installing...' : 'Install update'}
+                </button>
+                {installingUpdate && (
+                  <p className="text-sm text-gray-400">Sportarr restarts when the update is installed. This page reloads then.</p>
+                )}
+                {/* A blocked install already shows its reason above. */}
+                {!installingUpdate && (installError ?? (view === 'native' ? installBlockReason(updateStatus) : null)) && (
+                  <p role={installError ? 'alert' : undefined} className={`text-sm ${installError ? 'text-red-400' : 'text-gray-400'}`}>
+                    {installError ?? installBlockReason(updateStatus)}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

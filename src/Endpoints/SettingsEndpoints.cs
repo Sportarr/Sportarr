@@ -27,9 +27,10 @@ app.MapGet("/api/config", async (ConfigService configService) =>
 });
 
 // API: Settings Management (using config.xml)
-app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContext db, IUpdateMethodSource updateMethods, ILogger<Program> logger) =>
 {
     var config = await configService.GetConfigAsync();
+    var updateMethod = updateMethods.Describe(config);
     var dbMediaSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
 
     // Debug logging to diagnose folder settings load issue
@@ -175,10 +176,13 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
         UpdateSettings = System.Text.Json.JsonSerializer.Serialize(new UpdateSettings
         {
             Branch = config.Branch.ToLower(),
-            Automatic = config.UpdateAutomatically,
-            // An old Apt value shows as External. config.xml keeps it until the next save.
-            Mechanism = UpdateMechanisms.Normalize(config.UpdateMechanism).ToLowerInvariant(),
-            ScriptPath = config.UpdateScriptPath
+            // Only the new tick. The old UpdateAutomatically did nothing.
+            AutomaticUpdates = config.AutomaticUpdates,
+            // Sportarr finds the method. The page only shows it.
+            Mechanism = updateMethod.Mechanism.ToLowerInvariant(),
+            AutomaticAvailable = updateMethod.AutomaticAvailable,
+            AutomaticUnavailableReason = updateMethod.AutomaticUnavailableReason,
+            ScriptPath = updateMethod.ScriptPath
         }, jsonOptions),
 
         UISettings = System.Text.Json.JsonSerializer.Serialize(new UISettings
@@ -352,13 +356,6 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         return Results.BadRequest(new { error = $"The {parsingBlock} block could not be read: {ex.Message}" });
     }
 
-    // Only the four mechanisms that Sportarr supports can be saved.
-    var updateMechanism = UpdateMechanisms.Docker;
-    if (updateSettingsObj != null && !UpdateMechanisms.TryParse(updateSettingsObj.Mechanism, out updateMechanism))
-    {
-        return Results.BadRequest(new { error = "The update mechanism must be builtin, docker, external or script." });
-    }
-
     // Get previous EnableMultiPartEpisodes value to detect changes
     var config = await configService.GetConfigAsync();
     var previousEnableMultiPart = config.EnableMultiPartEpisodes;
@@ -517,9 +514,12 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
         if (updateSettingsObj != null)
         {
             config.Branch = updateSettingsObj.Branch;
-            config.UpdateAutomatically = updateSettingsObj.Automatic;
-            config.UpdateMechanism = updateMechanism;
-            config.UpdateScriptPath = updateSettingsObj.ScriptPath;
+            // A block without the new field, as from a v4.1.12 page, keeps
+            // the stored tick.
+            if (updateSettingsObj.AutomaticUpdates is bool automaticUpdates)
+                config.AutomaticUpdates = automaticUpdates;
+            // The method is not a setting, and only config.xml sets the
+            // script. A save ignores both.
         }
 
         if (uiSettings != null)

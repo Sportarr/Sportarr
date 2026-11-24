@@ -18,7 +18,15 @@ public sealed record UpdateStatus(
     string? Reason,
     string? ReleaseUrl,
     bool Installing,
-    UpdateLastResult? LastResult = null);
+    UpdateLastResult? LastResult = null,
+    bool AutomaticAvailable = true,
+    string? AutomaticUnavailableReason = null);
+
+/// <summary>
+/// An install step failed because of this computer, for example a backup
+/// or the helper start. The install keeps the message as the problem.
+/// </summary>
+public sealed class UpdateEnvironmentException(string message, Exception inner) : Exception(message, inner);
 
 /// <summary>A failed or rolled back update that still matters.</summary>
 public sealed record UpdateLastResult(string Status, string Version, string Message, string Time);
@@ -82,8 +90,14 @@ public sealed class ProcessUpdaterLauncher : IUpdaterLauncher
 /// checks it, unpacks it, starts the update helper and stops Sportarr. The
 /// helper does the file swap, the restart and the rollback.
 /// </summary>
-public class InstallUpdateService
+public class InstallUpdateService : IUpdateMethodSource
 {
+    public const string ContainerProblem =
+        "Sportarr runs in a container. Pull the new image and recreate the container to update.";
+
+    public const string ScriptInUse =
+        "A custom update script is in use. It runs when Automatic Updates is on.";
+
     public const string HelperFolder = "Sportarr.Update";
     public const string DownloadHttpClientName = "SportarrUpdateDownload";
     internal static TimeSpan SystemdSwapTimeout { get; set; } = TimeSpan.FromMinutes(2);
@@ -106,6 +120,14 @@ public class InstallUpdateService
     // starts and no clean-up touches the update folders.
     private IUpdaterHandle? _helper;
 
+    // What this computer allows. See Answer.
+    private EnvironmentAnswer? _environmentAnswer;
+
+    // A container stays a container. Its check writes no file.
+    private readonly Lazy<bool> _inContainer;
+
+    private sealed record EnvironmentAnswer(string? Problem);
+
     public InstallUpdateService(
         ConfigService configService,
         UpdateCheckService updateCheck,
@@ -118,6 +140,7 @@ public class InstallUpdateService
         ILogger<InstallUpdateService> logger,
         IServer? server = null)
     {
+        _inContainer = new Lazy<bool>(() => environment.IsContainer);
         _safety = safety;
         _configService = configService;
         _updateCheck = updateCheck;
@@ -131,7 +154,39 @@ public class InstallUpdateService
     }
 
     /// <summary>True when Sportarr runs in a container.</summary>
-    public bool RunsInContainer => _environment.IsContainer;
+    public bool RunsInContainer => _inContainer.Value;
+
+    /// <summary>
+    /// How this install updates. A script path in config.xml gives Script.
+    /// A container gives Docker. Any other install gets the built-in update.
+    /// </summary>
+    public string Mechanism(Config config) =>
+        UpdateMechanisms.Effective(_inContainer.Value, UpdateMechanisms.ScriptPathFor(config));
+
+    /// <summary>
+    /// The update method, and if automatic updates can run here. A script
+    /// can always run. The built-in update can run when the computer allows
+    /// it. Docker never updates itself. With probe false, it uses only the
+    /// kept answer. Before the first check that answer is unknown, and it
+    /// counts as no problem.
+    /// </summary>
+    public UpdateMethod Describe(Config config, bool probe = true)
+    {
+        var mechanism = Mechanism(config);
+        if (mechanism == UpdateMechanisms.Script)
+            return new UpdateMethod(mechanism, true, null, UpdateMechanisms.ScriptPathFor(config));
+        var problem = GetEnvironmentProblem(probe);
+        return new UpdateMethod(mechanism, problem == null, problem);
+    }
+
+    UpdateMethod IUpdateMethodSource.Describe(Config config) => Describe(config);
+
+    /// <summary>
+    /// True when the user ticked Automatic Updates and they can run here.
+    /// Only the new tick counts. The old one of v4.1.12 did nothing.
+    /// </summary>
+    public bool AutomaticOn(Config config, bool probe = true) =>
+        config.AutomaticUpdates && Describe(config, probe).AutomaticAvailable;
 
     /// <summary>The User-Agent of package downloads. It names this version.</summary>
     public static string DownloadUserAgent =>
@@ -156,18 +211,25 @@ public class InstallUpdateService
     {
         var config = await _configService.GetConfigAsync();
         var check = await _updateCheck.CheckAsync(forceRefresh, cancellationToken);
+        // A page check that asked GitHub also looks again at this computer.
+        // The page then shows the reason from this same check.
+        if (check.Fetched)
+            Answer(fresh: true);
         var reason = GetBlockReason(config, check);
+        var method = Describe(config);
         return new UpdateStatus(
             _updateCheck.Running.FullVersion,
             check.Latest?.Version,
             check.Available,
-            UpdateMechanisms.Normalize(config.UpdateMechanism).ToLowerInvariant(),
-            config.UpdateAutomatically,
+            Mechanism(config).ToLowerInvariant(),
+            config.AutomaticUpdates,
             reason == null,
             reason,
             check.Latest?.PageUrl,
             IsInstalling,
-            LastFailedResult());
+            LastFailedResult(),
+            method.AutomaticAvailable,
+            method.AutomaticUnavailableReason);
     }
 
     // The page shows a failed or cancelled update at once, without a wait
@@ -184,13 +246,80 @@ public class InstallUpdateService
 
     /// <summary>
     /// Returns why this computer cannot use the built-in update, or null.
-    /// These reasons do not depend on GitHub. The health check shows them
-    /// when the mechanism is Built-in.
+    /// These reasons do not depend on GitHub. The settings page and the
+    /// health check show them. With probe false, it uses only the kept
+    /// answer and writes no file. The health pass reads it that way.
     /// </summary>
-    public string? GetEnvironmentProblem()
+    public string? GetEnvironmentProblem(bool probe = true)
     {
-        if (_environment.IsContainer)
-            return "Sportarr runs in a container. Pull the new image and recreate the container instead.";
+        if (_inContainer.Value)
+            return ContainerProblem;
+        return probe ? Answer().Problem : Volatile.Read(ref _environmentAnswer)?.Problem;
+    }
+
+    /// <summary>
+    /// Runs the background release check when it is due, every 6 hours. It
+    /// looks again at this computer right before it asks GitHub, also after
+    /// a good answer. So a problem that went away stops blocking updates,
+    /// and a new problem warns before the next release. Returns true when
+    /// the check ran.
+    /// </summary>
+    public async Task<bool> RunScheduledCheckIfDueAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_updateCheck.TryBeginScheduledCheck(_environment.ProcessStartTimestamp))
+            return false;
+        Answer(fresh: true);
+        await _updateCheck.RunScheduledCheckAsync(cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// Finds what this computer allows and keeps the answer. Between checks
+    /// the kept answer stays, good or bad, so the page, the save and the
+    /// health check agree. With fresh true it looks again, also after a
+    /// good answer: at the scheduled release check, at a page check that
+    /// asks GitHub, and at the start of an install.
+    /// </summary>
+    private EnvironmentAnswer Answer(bool fresh = false)
+    {
+        var kept = Volatile.Read(ref _environmentAnswer);
+        if (kept != null && !fresh)
+            return kept;
+
+        // The answer can come from the service setup. Read it again too.
+        if (kept != null)
+            _environment.DetectRestart(refresh: true);
+        var found = new EnvironmentAnswer(_inContainer.Value ? ContainerProblem : FindEnvironmentProblem());
+        // Two calls can find different answers at the same time. The first
+        // one stays, so both callers agree.
+        var before = Interlocked.CompareExchange(ref _environmentAnswer, found, kept);
+        return ReferenceEquals(before, kept) ? found : before!;
+    }
+
+    // An install step failed because of this computer. Keep the reason, so
+    // that the page and the health check show it until the next check.
+    private void KeepProblem(string problem)
+    {
+        Volatile.Write(ref _environmentAnswer, new EnvironmentAnswer(problem));
+        _logger.LogWarning("[Update] The update cannot install on this computer: {Problem}", problem);
+    }
+
+    // Makes the normal backup. A failed backup is a problem of this
+    // computer, for example a missing pg_dump or a full disk.
+    private async Task<UpdateDatabaseBackup> BackUpForUpdateAsync(string note)
+    {
+        try
+        {
+            return await _safety.BackUpDatabaseAsync(note);
+        }
+        catch (Exception ex)
+        {
+            throw new UpdateEnvironmentException($"The database backup before the update failed: {ex.Message}", ex);
+        }
+    }
+
+    private string? FindEnvironmentProblem()
+    {
         if (!_updateCheck.Running.IsReleaseBuild)
             return "This is a development build. The built-in update only works for release builds.";
 
@@ -205,9 +334,18 @@ public class InstallUpdateService
 
         if (!File.Exists(HelperPath(_environment.InstallDir)))
             return "The update helper is missing from the install folder. Install the latest release by hand once.";
+        // This check writes no file, so it comes before the folder probe.
+        var backupProblem = _safety.BackupProblem();
+        if (backupProblem != null)
+            return backupProblem;
         if (!_environment.IsDirectoryWritable(_environment.InstallDir))
-            return $"Sportarr cannot write to its install folder {_environment.InstallDir}.";
-        return _safety.BackupProblem();
+        {
+            var nextStep = _environment.Os == "win"
+                ? "Install it as a Windows service, or move it to a folder it can write to."
+                : "Run Sportarr as a user that can write there, or move it to a folder it can write to.";
+            return $"Sportarr cannot write to its install folder {_environment.InstallDir}. {nextStep}";
+        }
+        return null;
     }
 
     /// <summary>
@@ -215,8 +353,8 @@ public class InstallUpdateService
     /// </summary>
     public string? GetBlockReason(Config config, UpdateCheckResult check, bool ignoreInstalling = false)
     {
-        if (UpdateMechanisms.Normalize(config.UpdateMechanism) != UpdateMechanisms.BuiltIn)
-            return "The update mechanism is not Built-in.";
+        if (Mechanism(config) == UpdateMechanisms.Script)
+            return ScriptInUse;
         var problem = GetEnvironmentProblem();
         if (problem != null)
             return problem;
@@ -245,6 +383,9 @@ public class InstallUpdateService
         var swappedOk = false;
         try
         {
+            // Look again at this computer, also after a good answer. A setup
+            // can break between checks, and a download would be in vain.
+            Answer(fresh: true);
             var config = await _configService.GetConfigAsync();
             var check = await _updateCheck.CheckAsync(forceRefresh: true, cancellationToken);
             var reason = GetBlockReason(config, check, ignoreInstalling: true)
@@ -287,7 +428,7 @@ public class InstallUpdateService
 
             // The normal backup covers SQLite and Postgres. The helper uses
             // it to put a migrated SQLite database back on a rollback.
-            var backup = await _safety.BackUpDatabaseAsync($"Before the update to {release.Version}");
+            var backup = await BackUpForUpdateAsync($"Before the update to {release.Version}");
             _logger.LogInformation("[Update] Database backed up to {Path}", backup.Path);
 
             // A recording can start while the download runs. Ask again just
@@ -298,8 +439,15 @@ public class InstallUpdateService
 
             // Look again. The service setup can have changed since the start.
             var restart = _environment.DetectRestart(refresh: true);
+            // The kept answer uses the same facts. Find it again after the
+            // new service setup, so that a new call uses that setup.
+            Volatile.Write(ref _environmentAnswer, null);
             if (restart.Problem != null)
                 return new UpdateInstallResult(UpdateInstallOutcome.Refused, restart.Problem);
+            // The install folder can have changed too, for example its rights.
+            var problemNow = GetEnvironmentProblem();
+            if (problemNow != null)
+                return new UpdateInstallResult(UpdateInstallOutcome.Refused, problemNow);
             // Files of an earlier install must not count for this one.
             var signal = Path.Combine(UpdatesDir, "swapped");
             foreach (var old in new[] { "db-backup-path", "swapped", "stopping", UpdateResultMarker.FileName })
@@ -307,7 +455,15 @@ public class InstallUpdateService
 
             var arguments = BuildHelperArguments(release.Version, stagingDir, restart, config, backup);
             _logger.LogInformation("[Update] Starting the update helper. Sportarr stops now and the helper starts it again");
-            _helper = _launcher.Start(HelperPath(helperDir, inHelperFolder: false), arguments);
+            try
+            {
+                _helper = _launcher.Start(HelperPath(helperDir, inHelperFolder: false), arguments);
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException
+                                           or UnauthorizedAccessException or IOException)
+            {
+                throw new UpdateEnvironmentException($"The update helper could not start: {ex.Message}", ex);
+            }
 
             if (restart.Mode == UpdateRestartMode.Systemd)
             {
@@ -340,7 +496,7 @@ public class InstallUpdateService
 
                 // The data can have changed while the helper copied files. A
                 // fresh backup makes a rollback lose nothing.
-                var handoverBackup = await _safety.BackUpDatabaseAsync($"Before the update to {release.Version}, at the handover");
+                var handoverBackup = await BackUpForUpdateAsync($"Before the update to {release.Version}, at the handover");
                 UpdateStartupMarkers.WriteAtomic(Path.Combine(UpdatesDir, "db-backup-path"), handoverBackup.Path);
 
                 Environment.ExitCode = 1;
@@ -368,6 +524,16 @@ public class InstallUpdateService
                 Environment.ExitCode = 0;
                 WriteStopping("cancel");
             }
+            // A failure of this computer stays as the problem, so that the
+            // health check warns before the next try.
+            var problem = ex switch
+            {
+                UpdateEnvironmentException => ex.Message,
+                UnauthorizedAccessException => $"Sportarr does not have the rights it needs for the update: {ex.Message}",
+                _ => null
+            };
+            if (problem != null)
+                KeepProblem(problem);
             _logger.LogWarning(ex, "[Update] The update could not be installed");
             return new UpdateInstallResult(UpdateInstallOutcome.Failed, $"The update could not be installed: {ex.Message}");
         }
@@ -575,6 +741,10 @@ public class InstallUpdateService
         var http = _httpClientFactory.CreateClient(DownloadHttpClientName);
         using var response = await http.GetAsync(asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
+        // A redirect must lead to a place that the same rule allows.
+        var servedFrom = response.RequestMessage?.RequestUri;
+        if (!LatestReleaseClient.FinalUrlAllowed(new Uri(asset.DownloadUrl), servedFrom))
+            throw new InvalidDataException($"The package download was sent by a redirect to {servedFrom}, which Sportarr does not trust.");
 
         await using (var source = await response.Content.ReadAsStreamAsync(cancellationToken))
         await using (var file = File.Create(target))
@@ -720,7 +890,7 @@ public class InstallUpdateService
                 }
                 else
                 {
-                    var backup = await _safety.BackUpDatabaseAsync("Before the update, after a slow handover");
+                    var backup = await BackUpForUpdateAsync("Before the update, after a slow handover");
                     UpdateStartupMarkers.WriteAtomic(Path.Combine(UpdatesDir, "db-backup-path"), backup.Path);
                     Environment.ExitCode = 1;
                     if (WriteStopping("stop"))
@@ -739,6 +909,8 @@ public class InstallUpdateService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[Update] Waiting for the update helper failed");
+            if (ex is UpdateEnvironmentException)
+                KeepProblem(ex.Message);
             if (lateSwappedOk)
             {
                 Environment.ExitCode = 0;

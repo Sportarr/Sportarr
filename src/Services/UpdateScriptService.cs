@@ -3,7 +3,6 @@ namespace Sportarr.Api.Services;
 public enum UpdateScriptOutcome
 {
     AutomaticOff,
-    NotScriptMechanism,
     NoScriptPath,
     AlreadyRunning,
     Busy,
@@ -18,7 +17,7 @@ public enum UpdateScriptOutcome
 
 /// <summary>
 /// Runs the user's update script when a new release is out. This applies
-/// only when automatic updates are on and the mechanism is Script. The
+/// only when automatic updates are on and config.xml chose a script. The
 /// health monitor calls it on each pass. The script runs once for each new
 /// version. After a failure it runs again for that version at most once a
 /// day.
@@ -59,12 +58,12 @@ public class UpdateScriptService
     public async Task<UpdateScriptOutcome> RunIfDueAsync(CancellationToken cancellationToken = default)
     {
         var config = await _configService.GetConfigAsync();
-        if (!config.UpdateAutomatically)
+        // Only the new tick counts. The old one of v4.1.12 did nothing.
+        if (!config.AutomaticUpdates)
             return UpdateScriptOutcome.AutomaticOff;
-        if (UpdateMechanisms.Normalize(config.UpdateMechanism) != UpdateMechanisms.Script)
-            return UpdateScriptOutcome.NotScriptMechanism;
 
-        var scriptPath = config.UpdateScriptPath?.Trim();
+        // Only a script that config.xml chose counts. See UpdateMechanisms.
+        var scriptPath = UpdateMechanisms.ScriptPathFor(config);
         if (string.IsNullOrEmpty(scriptPath))
             return UpdateScriptOutcome.NoScriptPath;
 
@@ -73,7 +72,9 @@ public class UpdateScriptService
 
         try
         {
-            var check = await _updateCheck.CheckAsync(cancellationToken: cancellationToken);
+            // The scheduled release check keeps this answer. This pass reads
+            // it without a call to GitHub.
+            var check = _updateCheck.KnownCheck();
             var release = check.Latest;
             if (release == null)
                 return UpdateScriptOutcome.GitHubUnreachable;

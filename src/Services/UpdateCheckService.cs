@@ -43,16 +43,22 @@ public sealed record RunningVersion(string BaseVersion, string FullVersion, stri
 /// The answer to "is there a newer version", shared by the health check,
 /// the update script and the built-in update.
 /// </summary>
-public sealed record UpdateCheckResult(LatestRelease? Latest, bool Available);
+public sealed record UpdateCheckResult(LatestRelease? Latest, bool Available, bool Fetched = false);
 
 /// <summary>
-/// Asks GitHub for the latest stable release and keeps a good answer for a
-/// while, so that the health page, the monitor and the settings page do not
-/// each call GitHub. A failure is not kept, so the next call tries again.
+/// Asks GitHub for the latest stable release. The background check runs
+/// every 6 hours. The health pass, the automatic update and the update
+/// script read its answer and never ask GitHub themselves. The Updates
+/// settings page can ask again, at most every 10 minutes, and a refresh at
+/// most once a minute. A failure is not kept as an answer.
 /// </summary>
 public class UpdateCheckService
 {
+    // A page asks GitHub again when the answer is older than this.
     internal static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(10);
+
+    // The background check asks GitHub this often.
+    public static readonly TimeSpan ScheduledCheckInterval = TimeSpan.FromHours(6);
 
     // A refresh request asks GitHub at most this often. GitHub limits
     // requests without a token to 60 an hour.
@@ -62,9 +68,13 @@ public class UpdateCheckService
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<UpdateCheckService> _logger;
     private readonly SemaphoreSlim _lock = new(1, 1);
+    // All times below are on the monotonic clock, so that a clock change
+    // cannot delay a check or bring it forward. Null means never.
     private LatestRelease? _cached;
-    private DateTimeOffset _cachedAt;
-    private DateTimeOffset _lastRefresh = DateTimeOffset.MinValue;
+    private long _cachedAt;
+    private long? _lastRefresh;
+    private long? _lastScheduledCheck;
+    private readonly object _scheduleLock = new();
 
     public UpdateCheckService(
         IHttpClientFactory httpClientFactory,
@@ -76,33 +86,41 @@ public class UpdateCheckService
         _timeProvider = timeProvider;
         _logger = logger;
         Running = runningVersion ?? RunningVersion.Current;
+
+        var overrideBase = Environment.GetEnvironmentVariable(LatestReleaseClient.ApiBaseOverrideVariable);
+        if (!string.IsNullOrWhiteSpace(overrideBase))
+        {
+            if (LatestReleaseClient.OverrideInUse)
+                _logger.LogWarning("[Update] TEST ONLY: {Variable} points the update check at {Url}",
+                    LatestReleaseClient.ApiBaseOverrideVariable, overrideBase);
+            else
+                _logger.LogWarning("[Update] {Variable} is not a loopback address, so Sportarr ignores it and asks GitHub",
+                    LatestReleaseClient.ApiBaseOverrideVariable);
+        }
     }
 
     public RunningVersion Running { get; }
 
     /// <summary>
-    /// Returns null when GitHub cannot be reached.
+    /// The page check. Returns null when GitHub cannot be reached.
     /// </summary>
-    public async Task<LatestRelease?> GetLatestAsync(bool forceRefresh = false, CancellationToken cancellationToken = default)
+    public async Task<LatestRelease?> GetLatestAsync(bool forceRefresh = false, CancellationToken cancellationToken = default) =>
+        (await GetLatestCoreAsync(forceRefresh, cancellationToken)).Latest;
+
+    private async Task<(LatestRelease? Latest, bool Fetched)> GetLatestCoreAsync(bool forceRefresh, CancellationToken cancellationToken)
     {
         await _lock.WaitAsync(cancellationToken);
         try
         {
-            var now = _timeProvider.GetUtcNow();
-            var fresh = _cached != null && now - _cachedAt < CacheDuration;
-            var refreshAllowed = now - _lastRefresh >= MinimumRefreshInterval;
+            var now = _timeProvider.GetTimestamp();
+            var fresh = _cached != null && _timeProvider.GetElapsedTime(_cachedAt, now) < CacheDuration;
+            var refreshAllowed = _lastRefresh == null || _timeProvider.GetElapsedTime(_lastRefresh.Value, now) >= MinimumRefreshInterval;
             if (fresh && (!forceRefresh || !refreshAllowed))
-                return _cached;
+                return (_cached, false);
             if (forceRefresh)
                 _lastRefresh = now;
 
-            var latest = await LatestReleaseClient.FetchAsync(_httpClientFactory, _logger, cancellationToken);
-            if (latest != null)
-            {
-                _cached = latest;
-                _cachedAt = now;
-            }
-            return latest;
+            return (await FetchAndKeepAsync(now, cancellationToken), true);
         }
         finally
         {
@@ -110,9 +128,74 @@ public class UpdateCheckService
         }
     }
 
+    /// <summary>The page check, compared with the running version.</summary>
     public async Task<UpdateCheckResult> CheckAsync(bool forceRefresh = false, CancellationToken cancellationToken = default)
     {
-        var latest = await GetLatestAsync(forceRefresh, cancellationToken);
-        return new UpdateCheckResult(latest, latest != null && LatestReleaseClient.IsNewer(latest.Version, Running.BaseVersion));
+        var (latest, fetched) = await GetLatestCoreAsync(forceRefresh, cancellationToken);
+        return new UpdateCheckResult(latest, IsAvailable(latest), fetched);
     }
+
+    /// <summary>
+    /// The last answer, without a call to GitHub. Background work reads it.
+    /// Before the first check it has no release.
+    /// </summary>
+    public UpdateCheckResult KnownCheck()
+    {
+        var latest = Volatile.Read(ref _cached);
+        return new UpdateCheckResult(latest, IsAvailable(latest));
+    }
+
+    /// <summary>
+    /// Marks the background check as started when it is due, and returns
+    /// true then. The first check waits for the uptime wait after a start.
+    /// After that it runs every ScheduledCheckInterval. Only one caller
+    /// gets true for each check.
+    /// </summary>
+    public bool TryBeginScheduledCheck(long processStartTimestamp)
+    {
+        lock (_scheduleLock)
+        {
+            var now = _timeProvider.GetTimestamp();
+            if (_timeProvider.GetElapsedTime(processStartTimestamp, now) < AutomaticUpdateService.MinimumUptime ||
+                (_lastScheduledCheck != null && _timeProvider.GetElapsedTime(_lastScheduledCheck.Value, now) < ScheduledCheckInterval))
+                return false;
+            _lastScheduledCheck = now;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Asks GitHub now, for the background check. A failure also counts as
+    /// a check, so the next one comes after the interval.
+    /// </summary>
+    public async Task<LatestRelease?> RunScheduledCheckAsync(CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var now = _timeProvider.GetTimestamp();
+            lock (_scheduleLock)
+                _lastScheduledCheck = now;
+            return await FetchAndKeepAsync(now, cancellationToken);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    // Call with _lock held.
+    private async Task<LatestRelease?> FetchAndKeepAsync(long now, CancellationToken cancellationToken)
+    {
+        var latest = await LatestReleaseClient.FetchAsync(_httpClientFactory, _logger, cancellationToken);
+        if (latest != null)
+        {
+            Volatile.Write(ref _cached, latest);
+            _cachedAt = now;
+        }
+        return latest;
+    }
+
+    private bool IsAvailable(LatestRelease? latest) =>
+        latest != null && LatestReleaseClient.IsNewer(latest.Version, Running.BaseVersion);
 }

@@ -159,15 +159,19 @@ public static class ServiceCollectionExtensions
 
         // Downloads a release package for the built-in update. A package is
         // large, so the timeout is long.
+        // With the loopback test source in use, the handler follows no redirect.
         services.AddHttpClient(InstallUpdateService.DownloadHttpClientName)
+            .ConfigurePrimaryHttpMessageHandler(() => LatestReleaseClient.CreateHandler(LatestReleaseClient.OverrideInUse))
             .ConfigureHttpClient(client =>
             {
                 client.Timeout = TimeSpan.FromMinutes(30);
                 client.DefaultRequestHeaders.UserAgent.ParseAdd(InstallUpdateService.DownloadUserAgent);
             });
 
+        // The update check uses this client too. With the loopback test
+        // source in use, its handler follows no redirect.
         services.AddHttpClient("TrashGuides")
-            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler())
+            .ConfigurePrimaryHttpMessageHandler(() => LatestReleaseClient.CreateHandler(LatestReleaseClient.OverrideInUse))
             .ConfigureHttpClient(client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(30);
@@ -634,12 +638,14 @@ public static class ServiceCollectionExtensions
         // built-in update when automatic updates are on.
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<UpdateCheckService>();
+        services.AddSingleton<ReleaseListCache>();
         services.AddSingleton<IUpdateScriptRunner, ProcessUpdateScriptRunner>();
         services.AddSingleton<UpdateScriptService>();
         services.AddSingleton<IUpdateEnvironment, SystemUpdateEnvironment>();
         services.AddSingleton<IUpdaterLauncher, ProcessUpdaterLauncher>();
         services.AddSingleton<IUpdateSafety, UpdateSafety>();
         services.AddSingleton<InstallUpdateService>();
+        services.AddSingleton<IUpdateMethodSource>(sp => sp.GetRequiredService<InstallUpdateService>());
         services.AddSingleton<AutomaticUpdateService>();
 
         // Periodic sync of enabled import lists (previously manual-only).

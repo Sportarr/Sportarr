@@ -13,11 +13,10 @@ public static class SystemUpdatesEndpoint
     public static IEndpointRouteBuilder MapSystemUpdatesEndpoint(this IEndpointRouteBuilder app)
     {
         // API: System Updates - Check for new versions from GitHub
-        app.MapGet("/api/system/updates", async (ConfigService configService, IHttpClientFactory httpClientFactory, ILogger<Program> logger) =>
+        app.MapGet("/api/system/updates", async (ConfigService configService, IHttpClientFactory httpClientFactory, ReleaseListCache releaseCache, ILogger<Program> logger) =>
         {
             try
             {
-                logger.LogInformation("[UPDATES] Checking for updates from GitHub");
 
                 var currentVersion = Sportarr.Api.Version.GetFullVersion();
 
@@ -28,34 +27,42 @@ public static class SystemUpdatesEndpoint
 
                 logger.LogInformation("[UPDATES] Current version: {Version}", currentVersion);
 
-                // Factory-pooled named client (UA + timeout configured at
-                // registration) - a fresh HttpClient per update check was
-                // the classic socket-exhaustion antipattern.
-                var httpClient = httpClientFactory.CreateClient("GitHub");
+                // A page load asks GitHub at most every 15 minutes. A kept
+                // list is reused until then.
+                var fromCache = releaseCache.TryGet(out var json);
+                if (!fromCache)
+                {
+                    logger.LogInformation("[UPDATES] Checking for updates from GitHub");
 
-                HttpResponseMessage response;
-                try
-                {
-                    response = await httpClient.GetAsync("https://api.github.com/repos/Sportarr/Sportarr/releases");
-                }
-                catch (HttpRequestException ex)
-                {
-                    logger.LogError(ex, "[UPDATES] HTTP error connecting to GitHub API");
-                    return Results.Problem($"Failed to connect to GitHub: {ex.Message}");
-                }
-                catch (TaskCanceledException ex)
-                {
-                    logger.LogError(ex, "[UPDATES] Request to GitHub API timed out");
-                    return Results.Problem("GitHub API request timed out");
-                }
+                    // Factory-pooled named client (UA + timeout configured at
+                    // registration) - a fresh HttpClient per update check was
+                    // the classic socket-exhaustion antipattern.
+                    var httpClient = httpClientFactory.CreateClient("GitHub");
 
-                if (!response.IsSuccessStatusCode)
-                {
-                    logger.LogWarning("[UPDATES] Failed to fetch releases from GitHub: {StatusCode}", response.StatusCode);
-                    return Results.Problem("Failed to fetch updates from GitHub");
-                }
+                    HttpResponseMessage response;
+                    try
+                    {
+                        response = await httpClient.GetAsync("https://api.github.com/repos/Sportarr/Sportarr/releases");
+                    }
+                    catch (HttpRequestException ex)
+                    {
+                        logger.LogError(ex, "[UPDATES] HTTP error connecting to GitHub API");
+                        return Results.Problem($"Failed to connect to GitHub: {ex.Message}");
+                    }
+                    catch (TaskCanceledException ex)
+                    {
+                        logger.LogError(ex, "[UPDATES] Request to GitHub API timed out");
+                        return Results.Problem("GitHub API request timed out");
+                    }
 
-                var json = await response.Content.ReadAsStringAsync();
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        logger.LogWarning("[UPDATES] Failed to fetch releases from GitHub: {StatusCode}", response.StatusCode);
+                        return Results.Problem("Failed to fetch updates from GitHub");
+                    }
+
+                    json = await response.Content.ReadAsStringAsync();
+                }
 
                 if (string.IsNullOrWhiteSpace(json))
                 {
@@ -97,6 +104,10 @@ public static class SystemUpdatesEndpoint
                         releases = new List<object>()
                     });
                 }
+
+                // Keep only a good list.
+                if (!fromCache)
+                    releaseCache.Store(json);
 
                 var releaseList = new List<object>();
                 string? latestVersion = null;

@@ -215,8 +215,10 @@ public class HealthCheckMonitorService : BackgroundService, IManualPassService
     }
 
     /// <summary>
-    /// Runs the automatic update checks in the background. A script or a
-    /// download can take a long time, and the health pass must not wait.
+    /// Runs the update work in the background. First comes the release
+    /// check, which runs every 6 hours. Then the update script and the
+    /// automatic update read its answer. A script or a download can take a
+    /// long time, and the health pass must not wait.
     /// </summary>
     private void StartAutomaticUpdateCheck()
     {
@@ -225,9 +227,10 @@ public class HealthCheckMonitorService : BackgroundService, IManualPassService
         try { _services.GetService<InstallUpdateService>()?.CleanUpAfterSuccessfulUpdate(); }
         catch (Exception ex) { _logger.LogDebug(ex, "[Update] Clean-up after the update failed"); }
 
+        var installer = _services.GetService<InstallUpdateService>();
         var updateScript = _services.GetService<UpdateScriptService>();
         var automaticUpdate = _services.GetService<AutomaticUpdateService>();
-        if (updateScript == null && automaticUpdate == null)
+        if (installer == null && updateScript == null && automaticUpdate == null)
             return;
 
         var stoppingToken = _stoppingToken;
@@ -235,7 +238,10 @@ public class HealthCheckMonitorService : BackgroundService, IManualPassService
         {
             try
             {
-                // Each returns at once when its mechanism is not selected.
+                // Returns at once until the next release check is due.
+                if (installer != null)
+                    await installer.RunScheduledCheckIfDueAsync(stoppingToken);
+                // Each returns at once when it does not apply to this install.
                 if (updateScript != null)
                     await updateScript.RunIfDueAsync(stoppingToken);
                 if (automaticUpdate != null)

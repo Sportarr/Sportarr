@@ -16,9 +16,10 @@ public enum AutomaticUpdateOutcome
 
 /// <summary>
 /// Installs a new version with the built-in update when automatic updates
-/// are on and the mechanism is Built-in. The health monitor calls it on
-/// each pass. It waits for a quiet moment. It does not install in the first
-/// minutes after a start, while a recording runs, or while an import runs.
+/// are on and this install uses the built-in update. The health monitor
+/// calls it on each pass. It waits for a quiet moment. It does not install
+/// in the first minutes after a start, while a recording runs, or while an
+/// import runs.
 /// After a failed install it tries that version again at most once a day.
 /// </summary>
 public class AutomaticUpdateService
@@ -54,16 +55,21 @@ public class AutomaticUpdateService
     public async Task<AutomaticUpdateOutcome> RunIfDueAsync(CancellationToken cancellationToken = default)
     {
         var config = await _configService.GetConfigAsync();
-        if (!config.UpdateAutomatically)
+        // Only the new tick counts. The old one of v4.1.12 did nothing.
+        if (!config.AutomaticUpdates)
             return AutomaticUpdateOutcome.AutomaticOff;
-        if (UpdateMechanisms.Normalize(config.UpdateMechanism) != UpdateMechanisms.BuiltIn)
+        if (_installer.Mechanism(config) != UpdateMechanisms.BuiltIn)
             return AutomaticUpdateOutcome.NotBuiltIn;
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
-        if (now - _environment.ProcessStartUtc < MinimumUptime)
+        // The monotonic clock, so that a clock change cannot shorten or
+        // lengthen the wait.
+        if (_timeProvider.GetElapsedTime(_environment.ProcessStartTimestamp) < MinimumUptime)
             return AutomaticUpdateOutcome.TooSoonAfterStart;
 
-        var check = await _updateCheck.CheckAsync(cancellationToken: cancellationToken);
+        // The scheduled release check keeps this answer. Each pass reads it
+        // without a call to GitHub, so a busy moment can be retried soon.
+        var check = _updateCheck.KnownCheck();
         if (check.Latest != null && !check.Available)
             return AutomaticUpdateOutcome.UpToDate;
 

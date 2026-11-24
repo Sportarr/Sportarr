@@ -176,9 +176,25 @@ public class BackupSettings
 public class UpdateSettings
 {
     public string Branch { get; set; } = "main";
-    public bool Automatic { get; set; } = false;
-    public string Mechanism { get; set; } = "docker";
-    public string ScriptPath { get; set; } = "";
+
+    // The Automatic Updates tick. A save stores it. A save without it keeps
+    // the stored tick. v4.1.12 sent "automatic" for a tick that did
+    // nothing, so this name differs and a stale page cannot turn it on.
+    public bool? AutomaticUpdates { get; set; }
+
+    // The fields below are read only. A save ignores them.
+    // How this install updates: builtin, docker or script.
+    public string Mechanism { get; set; } = "";
+
+    // True when automatic updates can run on this install.
+    public bool AutomaticAvailable { get; set; }
+
+    // Why automatic updates cannot run here, in plain words, or null.
+    public string? AutomaticUnavailableReason { get; set; }
+
+    // The update script that runs, when the method is script. Only
+    // config.xml sets it.
+    public string? ScriptPath { get; set; }
 }
 
 // Development Configuration (hidden settings for testing)

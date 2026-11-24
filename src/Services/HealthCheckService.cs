@@ -656,13 +656,15 @@ public class HealthCheckService
     {
         var results = new List<HealthCheckResult>();
 
+        // The health pass reads the answer of the last release check. Only
+        // the scheduled check and a page ask GitHub.
         var release = _updateCheck != null
-            ? await _updateCheck.GetLatestAsync()
+            ? _updateCheck.KnownCheck().Latest
             : await LatestReleaseClient.FetchAsync(_httpClientFactory, _logger);
         if (release != null && LatestReleaseClient.IsNewer(release.Version, Sportarr.Api.Version.AppVersion))
         {
             var config = await _configService.GetConfigAsync();
-            var how = UpdateHint(config.UpdateMechanism, _installUpdate?.RunsInContainer ?? true);
+            var how = UpdateHint(config, _installUpdate);
             results.Add(new HealthCheckResult
             {
                 Type = HealthCheckType.UpdateAvailable,
@@ -676,36 +678,45 @@ public class HealthCheckService
     }
 
     /// <summary>
-    /// How to update, for the mechanism in the settings. Docker is the
-    /// default, so a plain install outside a container often has it too.
-    /// The text then does not talk about images.
+    /// How to update this install. Docker users pull the image. A native
+    /// install uses the button or waits for the automatic update.
     /// </summary>
-    internal static string UpdateHint(string? mechanism, bool inContainer) =>
-        UpdateMechanisms.Normalize(mechanism) switch
+    internal static string UpdateHint(Config config, InstallUpdateService? installer)
+    {
+        // Without the installer, as in some tests, the safe text is Docker.
+        if (installer == null)
+            return "Pull the new image and recreate the container.";
+
+        // The health pass reads only the kept answer. It writes no probe file.
+        var method = installer.Describe(config, probe: false);
+        return method.Mechanism switch
         {
-            UpdateMechanisms.BuiltIn => "Install it in Settings > General > Updates.",
-            UpdateMechanisms.Script => "Your update script runs when automatic updates are on.",
-            UpdateMechanisms.External => "Update with your installer or package manager.",
-            _ when inContainer => "Pull the latest image and recreate the container.",
-            _ => "Update by downloading the latest release, or set the update mechanism in Settings > General."
+            UpdateMechanisms.Docker => "Pull the new image and recreate the container.",
+            UpdateMechanisms.Script => "Your update script runs when Automatic Updates is on.",
+            _ when !method.AutomaticAvailable =>
+                "Sportarr cannot install it here. Settings > General > Updates says why. Update by hand from the releases page.",
+            _ when config.AutomaticUpdates =>
+                "Sportarr installs it automatically at a quiet moment. To install it now, click Install update in Settings > General > Updates.",
+            _ => "Click Install update in Settings > General > Updates, or turn on Automatic Updates there."
         };
+    }
 
     /// <summary>
-    /// Warn when the last built-in update was rolled back, and when the
-    /// mechanism is Built-in but this computer cannot use it.
+    /// Warn when the last built-in update failed or was rolled back. Also
+    /// warn when the user turned on automatic updates and this computer
+    /// stopped allowing them. Automatic updates that are off never warn.
+    /// Each call is a health pass. It reads only kept answers.
     /// </summary>
-    private async Task<List<HealthCheckResult>> CheckBuiltInUpdateAsync()
+    internal static List<HealthCheckResult> UpdateInstallResults(Config config, InstallUpdateService installer, string runningVersion)
     {
         var results = new List<HealthCheckResult>();
-        if (_installUpdate == null)
-            return results;
+        // The health pass reads only the kept answer. The scheduled release
+        // check looks again at this computer, so a health pass never probes.
+        var builtIn = installer.Mechanism(config) == UpdateMechanisms.BuiltIn;
+        var automaticBuiltIn = builtIn && installer.AutomaticOn(config, probe: false);
 
-        var config = await _configService.GetConfigAsync();
-        var builtIn = UpdateMechanisms.Normalize(config.UpdateMechanism) == UpdateMechanisms.BuiltIn;
-        var automaticBuiltIn = builtIn && config.UpdateAutomatically;
-
-        var marker = UpdateResultMarker.Read(_installUpdate.UpdatesDir);
-        if (marker != null && marker.StillRelevant(Sportarr.Api.Version.AppVersion))
+        var marker = UpdateResultMarker.Read(installer.UpdatesDir);
+        if (marker != null && marker.StillRelevant(runningVersion))
         {
             results.Add(new HealthCheckResult
             {
@@ -719,22 +730,31 @@ public class HealthCheckService
             });
         }
 
-        if (builtIn)
+        // A container never updates itself, so its tick does not warn.
+        if (builtIn && config.AutomaticUpdates)
         {
-            var problem = _installUpdate.GetEnvironmentProblem();
+            var problem = installer.GetEnvironmentProblem(probe: false);
             if (problem != null)
             {
                 results.Add(new HealthCheckResult
                 {
                     Type = HealthCheckType.UpdateCannotInstall,
                     Level = HealthCheckLevel.Warning,
-                    Message = "The built-in update cannot install on this system",
-                    Details = problem
+                    Message = "Automatic updates are on, but Sportarr cannot update itself here",
+                    Details = $"{problem} Sportarr looks again when it checks for a new version. It checks every 6 hours, and when you open Settings > General > Updates if the last check is more than 10 minutes old."
                 });
             }
         }
 
         return results;
+    }
+
+    private async Task<List<HealthCheckResult>> CheckBuiltInUpdateAsync()
+    {
+        if (_installUpdate == null)
+            return new List<HealthCheckResult>();
+        var config = await _configService.GetConfigAsync();
+        return UpdateInstallResults(config, _installUpdate, Sportarr.Api.Version.AppVersion);
     }
 
     /// <summary>

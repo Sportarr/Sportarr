@@ -99,6 +99,8 @@ public class EpgDownloadLimitSettingsTests
             builder.Services.AddValidatorsFromAssemblyContaining<ScheduleDvrRecordingRequestValidator>();
             builder.Services.AddScoped<SimpleAuthService>();
             builder.Services.AddScoped<FileFormatManager>();
+            // The settings page asks how this install updates.
+            builder.Services.AddSingleton<IUpdateMethodSource>(new FakeUpdateMethodSource());
 
             var app = builder.Build();
             app.Urls.Add("http://127.0.0.1:0");

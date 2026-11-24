@@ -25,23 +25,68 @@ public static class LatestReleaseClient
     // TEST ONLY. The end-to-end update test sets this environment variable
     // to point the check at a local server instead of GitHub. Only the
     // process environment sets it. No setting, API or page can change it.
+    // Sportarr ignores a value that is not a loopback address.
     public const string ApiBaseOverrideVariable = "SPORTARR_UPDATE_API_BASE";
 
-    /// <summary>
-    /// A package must come over HTTPS. Only the test server, which the
-    /// variable above names, may use plain HTTP.
-    /// </summary>
-    public static bool DownloadUrlAllowed(string url) =>
-        url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
-        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(ApiBaseOverrideVariable));
+    private static string? OverrideBase => Environment.GetEnvironmentVariable(ApiBaseOverrideVariable);
 
-    public static string ResolveLatestReleaseUrl()
+    /// <summary>
+    /// Returns the override as a URL when it names this computer, or null.
+    /// </summary>
+    internal static Uri? LoopbackOverride(string? overrideBase) =>
+        Uri.TryCreate(overrideBase?.Trim(), UriKind.Absolute, out var uri) &&
+        (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) && uri.IsLoopback
+            ? uri
+            : null;
+
+    /// <summary>True when the override is set and Sportarr uses it.</summary>
+    public static bool OverrideInUse => LoopbackOverride(OverrideBase) != null;
+
+    /// <summary>
+    /// A package must come over HTTPS. Only a loopback test server, which
+    /// the variable above names, may use plain HTTP.
+    /// </summary>
+    public static bool DownloadUrlAllowed(string url) => DownloadUrlAllowed(url, OverrideBase);
+
+    internal static bool DownloadUrlAllowed(string url, string? overrideBase)
     {
-        var overrideBase = Environment.GetEnvironmentVariable(ApiBaseOverrideVariable);
-        return string.IsNullOrWhiteSpace(overrideBase)
-            ? LatestReleaseApiUrl
-            : overrideBase.TrimEnd('/') + "/repos/Sportarr/Sportarr/releases/latest";
+        if (url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return LoopbackOverride(overrideBase) != null &&
+               Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+               uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback;
     }
+
+    /// <summary>
+    /// Checks where an answer came from after any redirect. With the
+    /// loopback source in use, no redirect is allowed. Otherwise the target
+    /// must pass the same rule as the first address, so HTTPS only.
+    /// </summary>
+    public static bool FinalUrlAllowed(Uri requested, Uri? final) => FinalUrlAllowed(requested, final, OverrideBase);
+
+    internal static bool FinalUrlAllowed(Uri requested, Uri? final, string? overrideBase)
+    {
+        var target = final ?? requested;
+        if (LoopbackOverride(overrideBase) != null && target != requested)
+            return false;
+        return DownloadUrlAllowed(target.AbsoluteUri, overrideBase);
+    }
+
+    /// <summary>
+    /// The handler for the update check and the package download. With the
+    /// loopback source in use, it follows no redirect, so no request leaves
+    /// this computer.
+    /// </summary>
+    public static SocketsHttpHandler CreateHandler(bool overrideInUse) =>
+        new() { AllowAutoRedirect = !overrideInUse };
+
+    public static string ResolveLatestReleaseUrl() => ResolveLatestReleaseUrl(OverrideBase);
+
+    internal static string ResolveLatestReleaseUrl(string? overrideBase) =>
+        LoopbackOverride(overrideBase) == null
+            ? LatestReleaseApiUrl
+            : overrideBase!.Trim().TrimEnd('/') + "/repos/Sportarr/Sportarr/releases/latest";
+
     public const string HttpClientName = "TrashGuides"; // This client already sends a User-Agent that GitHub accepts.
 
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);
@@ -51,18 +96,29 @@ public static class LatestReleaseClient
     /// A GitHub outage is not a Sportarr problem, so the caller skips the
     /// check and tries again on the next pass.
     /// </summary>
-    public static async Task<LatestRelease?> FetchAsync(
-        IHttpClientFactory httpClientFactory, ILogger logger, CancellationToken cancellationToken = default)
+    public static Task<LatestRelease?> FetchAsync(
+        IHttpClientFactory httpClientFactory, ILogger logger, CancellationToken cancellationToken = default) =>
+        FetchAsync(httpClientFactory, logger, OverrideBase, cancellationToken);
+
+    internal static async Task<LatestRelease?> FetchAsync(
+        IHttpClientFactory httpClientFactory, ILogger logger, string? overrideBase, CancellationToken cancellationToken = default)
     {
         try
         {
             var httpClient = httpClientFactory.CreateClient(HttpClientName);
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(RequestTimeout);
-            using var response = await httpClient.GetAsync(ResolveLatestReleaseUrl(), cts.Token);
+            var url = ResolveLatestReleaseUrl(overrideBase);
+            using var response = await httpClient.GetAsync(url, cts.Token);
             if (!response.IsSuccessStatusCode)
             {
                 logger.LogDebug("Update check skipped. GitHub answered {Status}", (int)response.StatusCode);
+                return null;
+            }
+            var servedFrom = response.RequestMessage?.RequestUri;
+            if (!FinalUrlAllowed(new Uri(url), servedFrom, overrideBase))
+            {
+                logger.LogWarning("Update check skipped. A redirect led to {Url}, which Sportarr does not trust", servedFrom);
                 return null;
             }
 

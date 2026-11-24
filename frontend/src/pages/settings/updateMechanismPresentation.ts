@@ -1,49 +1,24 @@
-export type UpdateMechanism = 'builtin' | 'docker' | 'external' | 'script';
+// The server finds how this install updates. The page only shows it.
+// docker: the container only reports a new version.
+// native: the built-in update works here.
+// blocked: a native install where the built-in update cannot work.
+// script: config.xml names a custom update script.
+export type UpdateView = 'docker' | 'native' | 'blocked' | 'script';
 
-export interface UpdateMechanismOption {
-  value: UpdateMechanism;
-  label: string;
-  help: string;
+export interface UpdateMethodFields {
+  mechanism?: string | null;
+  automaticAvailable?: boolean;
 }
 
-export const UPDATE_MECHANISM_OPTIONS: UpdateMechanismOption[] = [
-  {
-    value: 'builtin',
-    label: 'Built-in',
-    help: 'Sportarr downloads the new version, installs it and restarts. Not for Docker.',
-  },
-  {
-    value: 'docker',
-    label: 'Docker',
-    help: 'Pull the new image and recreate the container.',
-  },
-  {
-    value: 'external',
-    label: 'External',
-    help: 'Update with your installer or package manager. Sportarr shows when a new version is out.',
-  },
-  {
-    value: 'script',
-    label: 'Script',
-    help: 'Sportarr runs your script when a new version is out and passes the version and download link.',
-  },
-];
+export const DOCKER_UPDATE_TEXT = 'Pull the new image and recreate the container to update.';
+export const SCRIPT_UPDATE_TEXT = 'A custom update script is in use.';
 
-// The server sends one of the four values. An unknown value shows as
-// External, the same as the server reads it.
-export function normalizeUpdateMechanism(value: string | null | undefined): UpdateMechanism {
-  const lower = (value ?? '').trim().toLowerCase();
-  if (lower === '') return 'docker';
-  return UPDATE_MECHANISM_OPTIONS.some((o) => o.value === lower) ? (lower as UpdateMechanism) : 'external';
-}
-
-export function updateMechanismHelp(value: string): string {
-  return UPDATE_MECHANISM_OPTIONS.find((o) => o.value === normalizeUpdateMechanism(value))?.help ?? '';
-}
-
-export function automaticUpdatesApply(value: string): boolean {
-  const mechanism = normalizeUpdateMechanism(value);
-  return mechanism === 'builtin' || mechanism === 'script';
+export function updateView(update: UpdateMethodFields): UpdateView {
+  const mechanism = (update.mechanism ?? '').trim().toLowerCase();
+  if (mechanism === 'script') return 'script';
+  if (mechanism === 'builtin') return update.automaticAvailable === true ? 'native' : 'blocked';
+  // Docker, and any value this page does not know, only report.
+  return 'docker';
 }
 
 export interface UpdateStatus {
@@ -57,6 +32,10 @@ export interface UpdateStatus {
   releaseUrl: string | null;
   installing: boolean;
   lastResult?: { status: string; version: string; message: string; time: string } | null;
+  // The status call checks this computer again, so it wins over the
+  // settings answer.
+  automaticAvailable?: boolean;
+  automaticUnavailableReason?: string | null;
 }
 
 // A new failure has a new time, even when its text is the same as before.
@@ -80,12 +59,7 @@ export function isCancelled(lastResult: UpdateStatus['lastResult']): boolean {
   return lastResult?.status === 'Cancelled';
 }
 
-// The Install button works from the saved mechanism. A choice that is not
-// saved yet needs a save first.
-export function installBlockReason(selectedMechanism: string, status: UpdateStatus | null): string | null {
+export function installBlockReason(status: UpdateStatus | null): string | null {
   if (!status) return 'Checking for updates.';
-  if (normalizeUpdateMechanism(status.mechanism) !== normalizeUpdateMechanism(selectedMechanism)) {
-    return 'Save your settings first.';
-  }
   return status.canInstall ? null : status.reason;
 }

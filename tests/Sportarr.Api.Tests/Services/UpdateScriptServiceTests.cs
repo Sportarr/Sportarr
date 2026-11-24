@@ -82,6 +82,21 @@ public class UpdateScriptServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task The_script_check_reads_the_answer_of_the_last_scheduled_check()
+    {
+        WriteConfig(automatic: true, mechanism: "Script");
+        _runner.ExitCode = 1;
+        var service = CreateService();
+
+        (await service.RunIfDueAsync()).Should().Be(UpdateScriptOutcome.Failed);
+        _time.Advance(TimeSpan.FromDays(2));
+        (await service.RunIfDueAsync()).Should().Be(UpdateScriptOutcome.Failed);
+
+        _githubCalls.Should().Be(0);
+        _runner.Calls.Should().HaveCount(2);
+    }
+
+    [Fact]
     public async Task Does_nothing_when_automatic_updates_are_off()
     {
         WriteConfig(automatic: false, mechanism: "Script");
@@ -96,15 +111,45 @@ public class UpdateScriptServiceTests : IDisposable
     [InlineData("Docker")]
     [InlineData("External")]
     [InlineData("BuiltIn")]
-    [InlineData("Apt")]
-    public async Task Does_nothing_when_the_mechanism_is_not_script(string mechanism)
+    [InlineData("Script")]
+    public async Task An_old_automatic_tick_never_runs_the_script(string mechanism)
     {
-        WriteConfig(automatic: true, mechanism: mechanism);
+        // v4.1.12 and earlier stored this tick. Only the new one counts.
+        WriteConfig(automatic: null, mechanism: mechanism, oldTick: true);
 
-        (await CreateService().RunIfDueAsync()).Should().Be(UpdateScriptOutcome.NotScriptMechanism);
+        (await CreateService().RunIfDueAsync()).Should().Be(UpdateScriptOutcome.AutomaticOff);
 
         _runner.Calls.Should().BeEmpty();
         _githubCalls.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("Docker")]
+    [InlineData("External")]
+    [InlineData("BuiltIn")]
+    [InlineData("Apt")]
+    [InlineData("")]
+    public async Task A_leftover_script_path_with_another_old_mechanism_does_nothing(string mechanism)
+    {
+        // Older versions kept the path after the user switched away from Script.
+        WriteConfig(automatic: true, mechanism: mechanism);
+
+        (await CreateService().RunIfDueAsync()).Should().Be(UpdateScriptOutcome.NoScriptPath);
+
+        _runner.Calls.Should().BeEmpty();
+        _githubCalls.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("Script")]
+    [InlineData("script")]
+    public async Task A_real_script_config_keeps_working(string mechanism)
+    {
+        WriteConfig(automatic: true, mechanism: mechanism);
+
+        (await CreateService().RunIfDueAsync()).Should().Be(UpdateScriptOutcome.Succeeded);
+
+        _runner.Calls.Should().ContainSingle();
     }
 
     [Fact]
@@ -226,22 +271,6 @@ public class UpdateScriptServiceTests : IDisposable
         LatestReleaseClient.SelectDownloadUrl(assets, os, arch).Should().Be(expected);
     }
 
-    [Theory]
-    [InlineData("BuiltIn", "BuiltIn")]
-    [InlineData("builtin", "BuiltIn")]
-    [InlineData("Apt", "External")]
-    [InlineData("apt", "External")]
-    [InlineData("something else", "External")]
-    [InlineData("docker", "Docker")]
-    [InlineData("SCRIPT", "Script")]
-    [InlineData("External", "External")]
-    [InlineData("", "Docker")]
-    [InlineData(null, "Docker")]
-    public void Apt_and_unknown_mechanisms_read_as_external(string? stored, string expected)
-    {
-        UpdateMechanisms.Normalize(stored).Should().Be(expected);
-    }
-
     private UpdateScriptService CreateService()
     {
         var configuration = new ConfigurationBuilder()
@@ -261,6 +290,11 @@ public class UpdateScriptServiceTests : IDisposable
             factory.Object, _time, NullLogger<UpdateCheckService>.Instance,
             new RunningVersion("4.1.12", "4.1.12.1121", "4.1.12.1121+abc"));
 
+        // The script check reads the answer of the last scheduled check.
+        // Only the script check itself counts as GitHub calls below.
+        updateCheck.RunScheduledCheckAsync().GetAwaiter().GetResult();
+        _githubCalls = 0;
+
         return new UpdateScriptService(
             configService,
             updateCheck,
@@ -271,16 +305,20 @@ public class UpdateScriptServiceTests : IDisposable
             NullLogger<UpdateScriptService>.Instance);
     }
 
+    // "automatic" is the new tick. A null writes none, as in an old file.
+    // "mechanism" and "oldTick" write the keys of v4.1.12 and earlier.
     private void WriteConfig(
-        bool automatic,
+        bool? automatic,
         string mechanism,
         string scriptPath = "/scripts/update.sh",
         string lastVersion = "",
-        bool lastSucceeded = false)
+        bool lastSucceeded = false,
+        bool? oldTick = null)
     {
         File.WriteAllText(Path.Combine(_dataPath, "config.xml"),
             "<Config><SettingsUpgradeLevel>999</SettingsUpgradeLevel>" +
-            $"<UpdateAutomatically>{automatic.ToString().ToLowerInvariant()}</UpdateAutomatically>" +
+            (automatic == null ? "" : $"<AutomaticUpdates>{automatic.Value.ToString().ToLowerInvariant()}</AutomaticUpdates>") +
+            (oldTick == null ? "" : $"<UpdateAutomatically>{oldTick.Value.ToString().ToLowerInvariant()}</UpdateAutomatically>") +
             $"<UpdateMechanism>{mechanism}</UpdateMechanism>" +
             $"<UpdateScriptPath>{scriptPath}</UpdateScriptPath>" +
             $"<AutoUpdateLastVersion>{lastVersion}</AutoUpdateLastVersion>" +
@@ -325,14 +363,22 @@ public class UpdateScriptServiceTests : IDisposable
         }
     }
 
+    // Advance moves the wall clock and the monotonic counter together.
     private sealed class FakeTime : TimeProvider
     {
         private DateTimeOffset _now;
+        private long _ticks = TimeSpan.FromDays(10).Ticks;
 
         public FakeTime(DateTimeOffset now) => _now = now;
 
-        public void Advance(TimeSpan by) => _now += by;
+        public void Advance(TimeSpan by)
+        {
+            _now += by;
+            _ticks += by.Ticks;
+        }
 
         public override DateTimeOffset GetUtcNow() => _now;
+        public override long GetTimestamp() => _ticks;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
     }
 }

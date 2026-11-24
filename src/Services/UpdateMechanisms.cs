@@ -1,41 +1,55 @@
+using Sportarr.Api.Models;
+
 namespace Sportarr.Api.Services;
 
 /// <summary>
-/// The ways Sportarr can be updated. BuiltIn downloads and installs a new
-/// version with the update helper. Script runs the user's script. Docker
-/// and External only report a new version.
+/// The ways Sportarr updates. The user does not choose one. Sportarr finds
+/// it from the computer. BuiltIn downloads and installs a new version with
+/// the update helper. Docker only reports a new version. Script runs the
+/// script that config.xml names.
 /// </summary>
 public static class UpdateMechanisms
 {
     public const string BuiltIn = "BuiltIn";
     public const string Docker = "Docker";
-    public const string External = "External";
     public const string Script = "Script";
 
-    private static readonly string[] Allowed = { BuiltIn, Docker, External, Script };
-
     /// <summary>
-    /// Returns the mechanism to use for a stored value. Older versions
-    /// offered Apt, which never installed anything. It reads as External,
-    /// because that is what it did. An unknown value also reads as External.
-    /// An empty value is the default, Docker.
+    /// Returns the script that config.xml names, or null. It counts only
+    /// when UpdateMechanism is Script too. Older versions kept the path
+    /// after the user picked another mechanism, and that leftover must not
+    /// take over.
     /// </summary>
-    public static string Normalize(string? value)
+    public static string? ScriptPathFor(Config config)
     {
-        if (string.IsNullOrWhiteSpace(value))
-            return Docker;
-
-        return TryParse(value, out var mechanism) ? mechanism : External;
+        var path = config.UpdateScriptPath?.Trim();
+        var chosen = string.Equals(config.UpdateMechanism?.Trim(), Script, StringComparison.OrdinalIgnoreCase);
+        return chosen && !string.IsNullOrEmpty(path) ? path : null;
     }
 
     /// <summary>
-    /// Accepts only the four mechanisms, in any letter case.
+    /// Returns the method for this install. A script from ScriptPathFor
+    /// wins, because only a person can set it. A container gets Docker.
+    /// Every other install gets the built-in update.
     /// </summary>
-    public static bool TryParse(string? value, out string mechanism)
+    public static string Effective(bool inContainer, string? scriptPath)
     {
-        var trimmed = value?.Trim();
-        var match = Allowed.FirstOrDefault(m => string.Equals(m, trimmed, StringComparison.OrdinalIgnoreCase));
-        mechanism = match ?? "";
-        return match != null;
+        if (!string.IsNullOrWhiteSpace(scriptPath))
+            return Script;
+        return inContainer ? Docker : BuiltIn;
     }
+}
+
+/// <summary>
+/// How this install updates, and if automatic updates can run here. The
+/// script path is set when the method is Script.
+/// </summary>
+public sealed record UpdateMethod(string Mechanism, bool AutomaticAvailable, string? AutomaticUnavailableReason, string? ScriptPath = null);
+
+/// <summary>
+/// Gives the update method for this install. The settings page reads it.
+/// </summary>
+public interface IUpdateMethodSource
+{
+    UpdateMethod Describe(Config config);
 }

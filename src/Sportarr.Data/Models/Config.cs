@@ -101,9 +101,22 @@ public class Config
 
     // Update
     public string Branch { get; set; } = "main";
+    // The Automatic Updates tick on the settings page. It is off until the
+    // user ticks it. Sportarr finds the update method itself.
+    public bool AutomaticUpdates { get; set; } = false;
+
+    // v4.1.12 and earlier wrote this tick. It did nothing, so it must not
+    // start updates now. Old files keep loading with it. Do not read it.
+    [Obsolete("Use AutomaticUpdates. The old tick did nothing and must not start updates.")]
     public bool UpdateAutomatically { get; set; } = false;
-    public string UpdateMechanism { get; set; } = "Docker"; // BuiltIn, Docker, External or Script. An old Apt value reads as External.
-    public string UpdateScriptPath { get; set; } = ""; // Path to custom update script
+
+    // A custom update script. Only config.xml sets these two. The script
+    // runs only when UpdateMechanism is Script and the path is set. Older
+    // versions kept the path after the user picked another mechanism. That
+    // leftover does nothing. Sportarr reads no other UpdateMechanism value.
+    // See UpdateMechanisms.ScriptPathFor.
+    public string UpdateMechanism { get; set; } = "";
+    public string UpdateScriptPath { get; set; } = "";
 
     // Automatic updates keep this state, so that each new version is tried once.
     public string AutoUpdateLastVersion { get; set; } = "";

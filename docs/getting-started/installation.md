@@ -158,6 +158,7 @@ Wants=network-online.target
 User=sportarr
 WorkingDirectory=/opt/sportarr
 ExecStart=/opt/sportarr/Sportarr -data /var/lib/sportarr
+KillMode=process
 Restart=on-failure
 RestartSec=5
 
@@ -170,6 +171,10 @@ Then enable it:
 ```bash
 sudo systemctl enable --now sportarr
 ```
+
+`KillMode=process` and the two restart lines let the
+[built-in update](#built-in-updates) stop and start Sportarr. Without them,
+Sportarr cannot update itself.
 
 ### macOS
 
@@ -205,24 +210,52 @@ Then load it:
 launchctl load ~/Library/LaunchAgents/net.sportarr.plist
 ```
 
+Under launchd, Sportarr cannot update itself. launchd stops the update
+helper together with Sportarr. Sportarr still tells you when a new version
+is out, and you update it by hand as shown under [Updating](#updating).
+
 ## Updating
 
-**System > Updates** tells you when a new release is out. Sportarr checks
-GitHub for the latest stable release. If GitHub cannot be reached, it skips
-the check and tries again later.
+Sportarr checks GitHub for the latest stable release every 6 hours. The
+first check comes 15 to 30 minutes after Sportarr starts. Each check also
+looks again at whether Sportarr can install updates on this computer.
+Opening **Settings > General > Updates** checks again when the last check
+is more than 10 minutes old. If GitHub cannot be reached, Sportarr tries
+again at the next check.
 
-Pick how you update in **Settings > General > Updates**:
+**System > Updates** tells you when a new release is out. It lists the
+releases and refreshes that list at most every 15 minutes.
 
-- **Built-in**: Sportarr downloads the new version, installs it and
-  restarts. See [Built-in updates](#built-in-updates). Not for Docker.
-- **Docker**: pull the new image and recreate the container.
-- **External**: update with your installer or package manager. Sportarr
-  shows when a new version is out.
-- **Script**: Sportarr runs your script when a new version is out. See
-  [Update with a script](#update-with-a-script).
+You do not pick how Sportarr updates. It finds that out itself.
 
-Older versions also offered Apt. It never installed anything, and Sportarr
-now shows it as External.
+- In Docker, Sportarr only tells you about the new version. Pull the new
+  image and recreate the container, as shown under [Docker](#docker).
+  Sportarr notices on its own that it runs in a container.
+- Outside a container, **Settings > General > Updates** has an
+  **Install update** button and one **Automatic Updates** checkbox. Tick
+  the box and save. Sportarr then installs new versions on its own. See
+  [Built-in updates](#built-in-updates).
+
+Automatic Updates stays off until you tick it. Versions up to v4.1.12 had
+the same checkbox, but it did nothing. Sportarr ignores a tick from those
+versions, so tick the box again if you want automatic updates.
+
+Some installs cannot update themselves. The button and the checkbox are
+then grayed out, and one line says why. A box that is already ticked stays
+clickable, so you can turn it off. These are the usual reasons.
+
+- The Windows installer put Sportarr in Program Files, and the tray app
+  runs as a normal user. That user cannot write to Program Files. The
+  Windows service can, so install Sportarr as a service, or move it to a
+  folder that it can write to.
+- Sportarr runs under launchd on macOS. launchd stops the update helper
+  together with Sportarr.
+- The systemd unit lacks the lines that the update needs. They are listed
+  under [Built-in updates](#built-in-updates).
+- Sportarr uses Postgres, and `pg_dump` is not installed.
+
+After you fix the cause, Sportarr notices at its next check, as described
+above. Until then, update by hand as shown below.
 
 Your settings and database live in the data directory, not beside the
 program, so replacing the program leaves them alone. Where that directory
@@ -293,10 +326,10 @@ the `data` folder if it sits inside that same folder.
 
 ### Built-in updates
 
-Set the mechanism to **Built-in** and save. The Updates section then shows
-the version you run and the latest version. Click **Install update** to
-install it now. Turn on **Automatic Updates** to let Sportarr install new
-versions on its own.
+Outside a container, the Updates section shows the version you run and the
+latest version. Click **Install update** to install it now. Tick
+**Automatic Updates** and save to let Sportarr install new versions on its
+own.
 
 Sportarr downloads the package for your system from the release, checks
 its size and checksum, and unpacks it in the `updates` folder of the data
@@ -361,24 +394,45 @@ The built-in update needs these things:
   recordings itself when it shuts down. After the helper copies the files,
   Sportarr exits with an error code, and `Restart=on-failure` makes systemd
   start the new version.
-- Built-in supports systemd system services, the Windows service and
-  Sportarr started by hand. Under any other supervisor, use Script or
-  External.
-- Not as a systemd user service. Run Sportarr as a system service, or use
-  Script or External. Started from a terminal, which puts it in a scope,
-  the built-in update works and the helper starts Sportarr itself.
+- The built-in update supports systemd system services, the Windows
+  service and Sportarr started by hand. Under any other supervisor, leave
+  Automatic Updates off and update by hand or with a script.
+- Not as a systemd user service. Run Sportarr as a system service. Started
+  from a terminal, which puts it in a scope, the built-in update works and
+  the helper starts Sportarr itself.
 - Not under launchd on macOS. launchd stops the helper together with
-  Sportarr. Use Script or External there. Started from a terminal, the
-  built-in update works.
+  Sportarr. Update by hand there, or with a script. Started from a
+  terminal, the built-in update works.
 
-If something is missing, the Updates section and the health page say what
-it is.
+If something is missing, the Updates section says what it is. With
+Automatic Updates on, the health page warns too. Sportarr looks again at
+each check for a new version, every 6 hours and when you open the Updates
+section. If a step of an install fails because of this computer, for
+example the database backup, the Updates section and the health page show
+that reason until the next check.
 
 ### Update with a script
 
-Set the mechanism to **Script**, enter the path to your script and turn on
-**Automatic Updates**. Sportarr checks for a new release every 15 minutes. When it
-finds a newer release, it runs your script once for that version. If the
+A script covers setups that the built-in update does not. The settings page
+has no field for it. Stop Sportarr and open `config.xml` in the data
+directory. Set these two lines, and start Sportarr again.
+
+```xml
+<UpdateMechanism>Script</UpdateMechanism>
+<UpdateScriptPath>/opt/sportarr-update/run.sh</UpdateScriptPath>
+```
+
+Sportarr needs both. A path without `Script` does nothing. Older versions
+kept the path after you picked another way to update, and that leftover
+path stays unused.
+
+The Updates section then says that a custom update script is in use and
+shows the path. A script takes the place of the built-in update, also in
+a container. To go back to the built-in update, clear the two lines and
+restart Sportarr.
+Tick **Automatic Updates** and save. Sportarr checks for a new release every
+6 hours, as described under [Updating](#updating). When it finds a newer
+release, it runs your script once for that version. If the
 script exits with an error, Sportarr tries again the next day. If GitHub
 cannot be reached, Sportarr skips the check and tries again later.
 
@@ -401,7 +455,7 @@ a scheduled task.
 
 ```bash
 #!/bin/sh
-# /opt/sportarr-update/run.sh, the path you enter in Sportarr
+# /opt/sportarr-update/run.sh, the path in config.xml
 exec systemd-run --unit=sportarr-update --collect \
   --setenv=SPORTARR_UPDATE_DOWNLOAD_URL="$SPORTARR_UPDATE_DOWNLOAD_URL" \
   --setenv=SPORTARR_INSTALL_DIR="$SPORTARR_INSTALL_DIR" \
