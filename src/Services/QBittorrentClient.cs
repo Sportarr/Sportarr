@@ -471,6 +471,19 @@ public class QBittorrentClient
                 var torrents = await GetTorrentsAsync(config);
                 var canFindByHash = config.Type == DownloadClientType.QBittorrent && !string.IsNullOrEmpty(knownHash);
 
+                // A bad read right after the add does not mean the add failed.
+                // With a known hash the poll below looks again before giving up;
+                // without one, retry the read a few times first.
+                if (!canFindByHash)
+                {
+                    for (var attempt = 0; (torrents == null || torrents.Count == 0) && attempt < 3; attempt++)
+                    {
+                        _logger.LogInformation("[qBittorrent] List read after the add came back empty or failed; retrying ({Attempt}/{Max})", attempt + 1, 3);
+                        await Task.Delay(1000);
+                        torrents = await GetTorrentsAsync(config);
+                    }
+                }
+
                 // A failed list read does not mean the add failed. With a known
                 // hash, the poll below looks again before it gives up.
                 if (torrents == null && !canFindByHash)
