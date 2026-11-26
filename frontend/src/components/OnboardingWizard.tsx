@@ -161,6 +161,9 @@ export default function OnboardingWizard({ onClose, onComplete, isFirstRunGuide 
   const [dcHost, setDcHost] = useState('localhost');
   const [dcFormTouched, setDcFormTouched] = useState(false);
   const [dcPort, setDcPort] = useState(8080);
+  // SABnzbd and friends are often behind a reverse proxy on https, so the
+  // wizard needs the same Use SSL switch the Download Clients settings page has.
+  const [dcUseSsl, setDcUseSsl] = useState(false);
   const [dcUser, setDcUser] = useState('');
   const [dcPass, setDcPass] = useState('');
   const [dcApiKey, setDcApiKey] = useState('');
@@ -404,7 +407,7 @@ export default function OnboardingWizard({ onClose, onComplete, isFirstRunGuide 
     password: clientAuth === 'userpass' ? dcPass : '',
     apiKey: clientAuth === 'apikey' ? dcApiKey.trim() : '',
     category: 'sportarr',
-    useSsl: false,
+    useSsl: dcUseSsl,
     enabled: true,
     priority: 1,
     tags: [] as number[],
@@ -569,6 +572,7 @@ export default function OnboardingWizard({ onClose, onComplete, isFirstRunGuide 
     // with clients already added as "done", so finishing the step never
     // saves an accidental duplicate.
     setDcHost('');
+    setDcUseSsl(false);
     setDcUser('');
     setDcPass('');
     setDcApiKey('');
@@ -621,6 +625,7 @@ export default function OnboardingWizard({ onClose, onComplete, isFirstRunGuide 
     setDcType(c.type ?? 0);
     setDcHost(c.host ?? '');
     setDcPort(c.port ?? 8080);
+    setDcUseSsl(c.useSsl === true);
     setDcUser(c.username ?? '');
     setDcPass(c.password ?? '');
     setDcApiKey(c.apiKey ?? '');
@@ -1299,6 +1304,15 @@ export default function OnboardingWizard({ onClose, onComplete, isFirstRunGuide 
                     <input type="number" value={dcPort} onChange={(e) => { setDcFormTouched(true); setDcPort(parseInt(e.target.value, 10) || 0); }} className={inputCls} />
                   </div>
                 </div>
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={dcUseSsl}
+                    onChange={(e) => { setDcFormTouched(true); setDcUseSsl(e.target.checked); }}
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                  />
+                  <span className="text-sm font-medium text-gray-300">Use SSL</span>
+                </label>
                 {clientAuth === 'apikey' ? (
                   <div>
                     <label className={labelCls}>API Key</label>
