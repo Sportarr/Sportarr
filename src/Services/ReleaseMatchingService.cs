@@ -1404,12 +1404,13 @@ public class ReleaseMatchingService
             if (eventSession != null && releaseSession != null)
             {
                 // Normalize both session names for comparison
+                var isMotoGp = evt.League?.Name?.Contains("MotoGP", StringComparison.OrdinalIgnoreCase) == true;
                 var normalizedEventSession = isWorldSuperbike
                     ? eventSession
-                    : EventPartDetector.NormalizeMotorsportSession(eventSession);
+                    : EventPartDetector.NormalizeMotorsportSession(eventSession, keepBarePractice: isMotoGp);
                 var normalizedReleaseSession = isWorldSuperbike
                     ? releaseSession
-                    : EventPartDetector.NormalizeMotorsportSession(releaseSession);
+                    : EventPartDetector.NormalizeMotorsportSession(releaseSession, keepBarePractice: isMotoGp);
 
                 if (normalizedEventSession == normalizedReleaseSession && !nascarSessionConflict)
                 {

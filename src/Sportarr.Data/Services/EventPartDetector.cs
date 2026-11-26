@@ -420,10 +420,14 @@ public class EventPartDetector
             new("Test 1", new[] { @"(?<!shakedown[\s._-]?)(?<!pre[\s._-]?season[\s._-]?)\btest[\s._-]*(1|one)\b", @"\btest[\s._-]*day[\s._-]*(1|one)\b", @"\btest[\s._-]*pt[\s._-]*1\b" }),
             new("Test 2", new[] { @"(?<!shakedown[\s._-]?)(?<!pre[\s._-]?season[\s._-]?)\btest[\s._-]*(2|two)\b", @"\btest[\s._-]*day[\s._-]*(2|two)\b", @"\btest[\s._-]*pt[\s._-]*2\b" }),
             new("Test 3", new[] { @"(?<!shakedown[\s._-]?)(?<!pre[\s._-]?season[\s._-]?)\btest[\s._-]*(3|three)\b", @"\btest[\s._-]*day[\s._-]*(3|three)\b", @"\btest[\s._-]*pt[\s._-]*3\b" }),
-            // Practice sessions (most specific first — bare "Practice" falls through to Practice 1)
+            // Practice sessions (most specific first). Since 2023 a MotoGP weekend holds both
+            // "Free Practice 1" and a separate "Practice" session, so bare "Practice" is its own
+            // session here and no longer reads as Practice 1 (issue #461). A bare "Free Practice"
+            // still reads as Practice 1.
             new("Practice 3", new[] { @"\b(free\s*)?practice\s*(3|three)\b", @"\bfp3\b" }),
             new("Practice 2", new[] { @"\b(free\s*)?practice\s*(2|two)\b", @"\bfp2\b" }),
-            new("Practice 1", new[] { @"\b(free\s*)?practice\s*(1|one)?\b", @"\bfp1\b" }),  // Catches bare "Practice"
+            new("Practice 1", new[] { @"\b(free\s*)?practice\s*(1|one)\b", @"\bfp1\b", @"\bfree\s*practice\b" }),
+            new("Practice", new[] { @"\bpractice\b" }),
             new("Warm Up", new[] { @"\bwarm\s*up\b" }),
             // Sprint MUST come before Qualifying (Sprint already has negative lookahead)
             new("Sprint", new[] { @"(?<!qualifying\s)(?<!quali\s)\bsprint\b(?!\s*(qualifying|quali))" }),
@@ -1748,7 +1752,11 @@ public class EventPartDetector
     /// Normalize a motorsport session name to a canonical form for comparison.
     /// Maps variations like "Free Practice 1", "Practice 1", "FP1" all to "Practice 1".
     /// </summary>
-    public static string? NormalizeMotorsportSession(string? sessionName)
+    /// <param name="keepBarePractice">
+    /// True for MotoGP, where bare "Practice" is a session of its own beside "Practice 1" and must
+    /// not be folded into it (issue #461). Every other league keeps the old fold.
+    /// </param>
+    public static string? NormalizeMotorsportSession(string? sessionName, bool keepBarePractice = false)
     {
         if (string.IsNullOrEmpty(sessionName))
             return null;
@@ -1780,6 +1788,8 @@ public class EventPartDetector
             return "Practice 2";
         if (lower.Contains("practice 1") || lower.Contains("practice one") || lower.Contains("fp1") || lower.Contains("free practice 1"))
             return "Practice 1";
+        if (lower == "practice" && keepBarePractice)
+            return "Practice";
         if (lower == "practice" || lower == "free practice")
             return "Practice 1";
 
