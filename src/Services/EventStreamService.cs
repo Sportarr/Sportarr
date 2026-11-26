@@ -175,6 +175,19 @@ public class EventStreamService
         }
     }
 
+    /// <summary>
+    /// The id of the newest stored event, or 0 when none is stored.
+    /// Housekeeping keeps the newest row, so this is the top of the id
+    /// sequence. A table that an earlier version pruned empty reads 0 until
+    /// the next event, and a consumer then resyncs once.
+    /// </summary>
+    public async Task<int> GetNewestIdAsync(CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+        return await db.StreamEvents.AsNoTracking().MaxAsync(e => (int?)e.Id, ct) ?? 0;
+    }
+
     public async Task<List<StreamEvent>> ReplaySinceAsync(int sinceId, int limit, CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();

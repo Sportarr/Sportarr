@@ -59,8 +59,27 @@ public static class StreamEndpoints
             var ct = ctx.RequestAborted;
             using var subscription = stream.Subscribe();
 
+            // Send the headers now. Without this, a consumer with nothing to
+            // replay learns that it is connected only at the first keepalive.
+            await ctx.Response.Body.FlushAsync(ct);
+
             var lastSent = since;
-            if (since > 0)
+            var newest = since > 0 ? await stream.GetNewestIdAsync(ct) : 0;
+            if (since > newest)
+            {
+                // The cursor is past every id that this database holds, for
+                // example after a restore from backup. The live loop skips ids
+                // at or below the cursor, so the consumer would hear nothing.
+                // Move the cursor back to the newest id and ask for a resync.
+                logger.LogInformation(
+                    "[Stream] Consumer resumed from {Since}, which is past the newest event {Newest}. Asking it to resync.",
+                    since, newest);
+                lastSent = newest;
+                await ctx.Response.WriteAsync(
+                    $"event: stream.resync\ndata: {{\"reason\":\"cursor ahead\",\"lastId\":{newest}}}\n\n", ct);
+                await ctx.Response.Body.FlushAsync(ct);
+            }
+            else if (since > 0)
             {
                 // Replay in pages until caught up. A single capped query left
                 // a consumer more than one page behind permanently short of

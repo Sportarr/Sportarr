@@ -479,15 +479,19 @@ public class HousekeepingService : BackgroundService, IManualPassService
         }
     }
 
-    private async Task PruneStreamEventsAsync(SportarrDbContext db, CancellationToken ct)
+    internal async Task PruneStreamEventsAsync(SportarrDbContext db, CancellationToken ct)
     {
         try
         {
             // 7 days bounds the SSE catch-up window: a consumer offline
             // longer than that must full-resync anyway.
             var cutoff = DateTime.UtcNow.AddDays(-7);
+            // The newest row stays, so the stream still knows the top of the id
+            // sequence after a quiet week. A cursor past that top then means
+            // that the ids went back, not that the table is empty.
+            var newestId = await db.StreamEvents.MaxAsync(e => (int?)e.Id, ct) ?? 0;
             var deleted = await db.StreamEvents
-                .Where(e => e.Timestamp < cutoff)
+                .Where(e => e.Timestamp < cutoff && e.Id < newestId)
                 .ExecuteDeleteAsync(ct);
 
             if (deleted > 0)

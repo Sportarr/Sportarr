@@ -347,6 +347,26 @@ Reconnect semantics:
   thing a scheduled reconciliation job should do anyway.
 - The server sends a comment keepalive every 15 seconds. Treat a silent
   minute as a dead connection and reconnect.
+- The response headers arrive as soon as the stream opens, before any
+  replay or keepalive.
+
+When the stream cannot replay what a consumer missed, it sends a
+`stream.resync` frame instead. This frame has no `id` line:
+
+```
+event: stream.resync
+data: {"reason":"too far behind","lastId":20456}
+```
+
+| `reason` | Sent when |
+|---|---|
+| `too far behind` | The cursor is more than 20,000 events behind, on connect or while connected |
+| `cursor ahead` | The cursor is past the newest id this instance holds, for example after a database restore |
+
+On `stream.resync`, take `lastId` as the new cursor, even when it is lower
+than the one you hold, and run a full resync through the REST endpoints.
+The stream goes live after `lastId`. `lastId` is `0` when the instance holds
+no events, so reconnect without `since` in that case.
 
 ## Deprecation policy
 
