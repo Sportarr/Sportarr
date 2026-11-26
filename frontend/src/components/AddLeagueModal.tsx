@@ -1117,7 +1117,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                             <div className="text-xs text-gray-400">Teams in the three newest seasons with events.</div>
                           </div>
                         )}
-                        <div className="grid max-h-96 grid-cols-1 gap-3 overflow-y-auto md:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                           {filteredGroups.recent.map(renderTeamButton)}
                         </div>
                         {hasEarlierTeams && (
@@ -1136,7 +1136,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                               </button>
                             )}
                             {earlierOpen && (
-                              <div className="mt-3 grid max-h-96 grid-cols-1 gap-3 overflow-y-auto md:grid-cols-2">
+                              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                                 {filteredGroups.earlier.map(renderTeamButton)}
                               </div>
                             )}
@@ -1808,8 +1808,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                   </div>
                 </div>
 
-                {/* Footer */}
-                <div className="border-t border-red-900/30 p-6 bg-black/30">
+                {/* Footer. Sticky so Add to Library stays on screen while the options above scroll. */}
+                <div className="sticky bottom-0 z-10 border-t border-red-900/30 p-6 bg-gray-950">
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-gray-400">
                       {showSessionTypeSelection ? (
