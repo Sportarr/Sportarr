@@ -90,6 +90,7 @@ public class ReleaseMatchingService
         new Regex(@"\bhalf[\s\.\-_]*time[\s\.\-_]*show", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), // halftime show
         new Regex(@"\b(?:1st|first|2nd|second)[\s\.\-_]*half\b", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), // partial match
         new Regex(@"\bwarm[\s\.\-_]*up\b", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),             // warm up (F1 pre-show)
+        new Regex(@"\bgear[\s\.\-_]*up\b", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),             // Gear Up (MotoGP pre-show)
         new Regex(@"\bweekend[\s\.\-_]*warm[\s\.\-_]*up", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), // weekend warm up (Sky F1)
         new Regex(@"\bted'?s?[\s\.\-_]*\w*[\s\.\-_]*notebook", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), // Ted's Notebook
         new Regex(@"\bted[\s\.\-_]*kravitz", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),           // Ted Kravitz (Sky F1 presenter)
@@ -3028,6 +3029,8 @@ public class ReleaseMatchingService
                     return "Promo";
                 if (detected.Contains("trailer"))
                     return "Trailer";
+                if (detected.Contains("gear") && detected.Contains("up"))
+                    return "Gear Up Pre-show";
                 if (detected.Contains("warm") && detected.Contains("up"))
                     return "Warm-up Show";
                 if (detected.Contains("notebook") || detected.Contains("kravitz"))
