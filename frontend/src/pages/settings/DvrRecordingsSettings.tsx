@@ -319,8 +319,12 @@ export default function DvrRecordingsSettings() {
       await loadStats();
       toast.success('Recording Scheduled', { description: `${formData.eventTitle} has been scheduled` });
     } catch (err: any) {
-      setError(err.message || 'Failed to schedule recording');
-      toast.error('Failed to schedule recording', { description: err.message });
+      // The server says why it refused (409 when a stream cap is full, 400 for a
+      // bad time window) in the response body; err.message is only axios's
+      // "Request failed with status code 409" (Sportarr#470).
+      const reason = err?.response?.data?.error || err.message || 'Failed to schedule recording';
+      setError(reason);
+      toast.error('Failed to schedule recording', { description: reason });
     }
   };
 
