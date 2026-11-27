@@ -626,6 +626,35 @@ public class EventChannelResolverService
             if (parts.Length > 1) hasTeamNames = true;
             foreach (var p in parts) AddTerm(p);
         }
+        // Some guides list clubs by code ("BMG - BVB") or by a nickname. The
+        // team's short name, alternate names and the aliases a user added
+        // count too. A code is short and common as a word, so codes need
+        // both teams to appear before a programme counts.
+        var codeTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void AddTeamAliases(Team? team)
+        {
+            if (team == null) return;
+            var aliases = new List<string>();
+            if (!string.IsNullOrWhiteSpace(team.ShortName)) aliases.Add(team.ShortName);
+            foreach (var list in new[] { team.AlternateName, team.UserAliases })
+            {
+                if (string.IsNullOrWhiteSpace(list)) continue;
+                aliases.AddRange(list.Split(new[] { ',', '|', '/' },
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            }
+            foreach (var alias in aliases)
+            {
+                var t = NormalizeForSearch(alias);
+                if (t.Length < 2) continue;
+                if (t.Length < 4 || ReleaseMatchingService.IsShortCode(alias)) codeTerms.Add(t);
+                else searchTerms.Add(t);
+            }
+        }
+        if (hasTeamNames)
+        {
+            AddTeamAliases(evt.HomeTeam);
+            AddTeamAliases(evt.AwayTeam);
+        }
         // For non-team events, throw in title-derived tokens too so
         // "UFC 310" matches "UFC 310: Pereira vs Ankalaev" in EPG. Two-letter
         // filler words ("in", "of", "de") are left out: they occur in nearly
@@ -670,8 +699,10 @@ public class EventChannelResolverService
             int bestScore = 0;
             foreach (var p in group)
             {
-                int hits = CountTermHits(searchTerms, $"{p.Title} {p.Description} {p.Category}");
-                if (hasTeamNames && hits < 1) continue;  // require ≥1 team name
+                var programText = $"{p.Title} {p.Description} {p.Category}";
+                int hits = CountTermHits(searchTerms, programText);
+                int codeHits = CountTermHits(codeTerms, programText);
+                if (hasTeamNames && hits < 1 && codeHits < 2) continue;  // require ≥1 team name or both codes
                 if (!hasTeamNames && !NonTeamProgramMatches(hits, leagueTerms, p)) continue;
                 // Time proximity bonus (closer to scheduled_start = better).
                 // A block that started earlier counts as on time when it is
@@ -679,7 +710,7 @@ public class EventChannelResolverService
                 var minutesOff = p.StartTime < windowStart && p.EndTime >= blockEnd
                     ? 0
                     : (int)Math.Abs((p.StartTime - evt.EventDate).TotalMinutes);
-                int score = hits * 10 + Math.Max(0, 30 - minutesOff);
+                int score = (hits + codeHits) * 10 + Math.Max(0, 30 - minutesOff);
                 if (score > bestScore)
                 {
                     best = p;
