@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using FluentAssertions;
 using Sportarr.Api.Data;
@@ -136,6 +137,55 @@ public class DvrCompletedOutputNamingTests
         finally
         {
             File.Delete(ffprobePath);
+        }
+    }
+
+    // Issue #456: a recording that stays where the recorder wrote it skipped the
+    // library import, so the Plex connection was never triggered.
+    [Fact]
+    public async Task RecordingImportedInPlaceTriggersTheDownloadNotification()
+    {
+        await using var fixture = await NamingFixture.CreateAsync();
+        fixture.Recording.OutputPath = fixture.CreateRecordingFile("Fixture - HDTV-1080p.DVR.mkv");
+        fixture.Recording.Method = DvrRecordingMethod.Live;
+        fixture.Db.Notifications.Add(new Notification
+        {
+            Name = "Download webhook",
+            Implementation = "Webhook",
+            Enabled = true,
+            ConfigJson = "{\"webhook\":\"http://example.com/hook\",\"onDownload\":true}"
+        });
+        await fixture.Db.SaveChangesAsync();
+        var handler = new CountingHandler();
+        using var services = new ServiceCollection()
+            .AddScoped(_ => fixture.CreateDb())
+            .AddSingleton(fixture.CreateConfigService())
+            .BuildServiceProvider();
+        using var http = new HttpClient(handler);
+        var notifications = new NotificationService(
+            services, NullLogger<NotificationService>.Instance, http, new FixedHttpClientFactory(http));
+
+        var imported = await fixture.CreateEventDvrService(notificationService: notifications)
+            .ImportCompletedRecordingAsync(fixture.Recording.Id);
+
+        imported.Should().BeTrue();
+        handler.RequestCount.Should().Be(1);
+    }
+
+    private sealed class FixedHttpClientFactory(HttpClient client) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => client;
+    }
+
+    private sealed class CountingHandler : HttpMessageHandler
+    {
+        public int RequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK));
         }
     }
 
@@ -667,7 +717,8 @@ public class DvrCompletedOutputNamingTests
                 new DbContextOptionsBuilder<SportarrDbContext>().UseSqlite(_connection).Options);
         }
 
-        public EventDvrService CreateEventDvrService(ReleaseEvaluator? releaseEvaluator = null)
+        public EventDvrService CreateEventDvrService(
+            ReleaseEvaluator? releaseEvaluator = null, NotificationService? notificationService = null)
         {
             return new EventDvrService(
                 NullLogger<EventDvrService>.Instance,
@@ -680,7 +731,8 @@ public class DvrCompletedOutputNamingTests
                 null!,
                 null!,
                 GetConfig(),
-                null!);
+                null!,
+                notificationService);
         }
 
         public ConfigService CreateConfigService() => GetConfig();
