@@ -168,6 +168,9 @@ public static class TeamNameVariationData
 
         { "Tottenham Hotspur", new[] { "Tottenham" } },
         { "Bayern Munich", new[] { "Bayern", "FC Bayern München", "FC Bayern Munchen" } },
+        // Release groups shorten the two Manchester clubs this way.
+        { "Manchester City", new[] { "Man City" } },
+        { "Manchester United", new[] { "Man United", "Man Utd" } },
 
         // ============================================================
         // AFL Teams (18). TheSportsDB canonical names are "<Place>
