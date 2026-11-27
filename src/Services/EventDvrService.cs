@@ -23,6 +23,7 @@ public class EventDvrService
     private readonly EventChannelResolverService _channelResolver;
     private readonly ConfigService _configService;
     private readonly LibraryImportService _libraryImport;
+    private readonly NotificationService? _notificationService;
 
     public EventDvrService(
         ILogger<EventDvrService> logger,
@@ -35,7 +36,8 @@ public class EventDvrService
         EpgSchedulingService epgSchedulingService,
         EventChannelResolverService channelResolver,
         ConfigService configService,
-        LibraryImportService libraryImport)
+        LibraryImportService libraryImport,
+        NotificationService? notificationService = null)
     {
         _logger = logger;
         _db = db;
@@ -48,6 +50,7 @@ public class EventDvrService
         _channelResolver = channelResolver;
         _configService = configService;
         _libraryImport = libraryImport;
+        _notificationService = notificationService;
     }
 
     /// <summary>
@@ -829,6 +832,39 @@ public class EventDvrService
 
         _logger.LogInformation("[EventDVR] Imported DVR recording {RecordingId} as file for event {EventId}: {Title} ({Quality}, Score: {Score})",
             recordingId, recording.EventId, recording.Event.Title, recording.Quality, qualityScore);
+
+        // A recording that stays where the recorder wrote it skips the library
+        // import, so tell the media servers here the way a normal import does.
+        if (_notificationService != null)
+        {
+            try
+            {
+                var quality = recording.Quality ?? "DVR";
+                await _notificationService.SendNotificationAsync(
+                    NotificationTrigger.OnDownload,
+                    $"Imported: {recording.Event.Title}",
+                    $"File: {Path.GetFileName(recording.OutputPath)}\nQuality: {quality}",
+                    new NotificationEventData
+                    {
+                        EventId = recording.Event.Id,
+                        EventExternalId = recording.Event.ExternalId,
+                        EventTitle = recording.Event.Title ?? "",
+                        League = recording.Event.League?.Name,
+                        Sport = recording.Event.Sport,
+                        File = new NotificationFileData
+                        {
+                            Path = recording.OutputPath ?? "",
+                            Quality = quality,
+                            Size = recording.FileSize ?? 0
+                        }
+                    },
+                    recording.Event.League?.Tags);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[EventDVR] Failed to send notifications about imported recording {RecordingId}", recordingId);
+            }
+        }
 
         return true;
     }
