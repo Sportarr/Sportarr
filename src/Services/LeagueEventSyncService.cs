@@ -3,6 +3,7 @@ using Sportarr.Api.Helpers;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Sportarr.Api.Services;
 
@@ -626,6 +627,11 @@ public class LeagueEventSyncService
         var seenApiIds = new HashSet<string>();
         var pendingOrphans = new List<(int EventId, string Season)>();
 
+        // Recordings whose times follow the guide are found once per league
+        // sync. Their times do not change while the seasons are processed.
+        var guideTimedRecordingIds = await FindGuideTimedRecordingIdsAsync(
+            _db, await LoadScheduledRecordingsAsync(), league.Id, cancellationToken);
+
         int seasonIndex = 0;
         // Sync each season
         foreach (var season in seasons)
@@ -887,7 +893,7 @@ public class LeagueEventSyncService
                     ProcessEvent(apiEvent, league, result, currentSeason, latestSeasonWithData, apiEpisodeMap,
                         existingByExternalId, teamsByExternalId, scheduledRecordingsByEventId,
                         localByDateTitle, apiIds, adoptedLocalEventIds, cupStageSizes, monitoredTeamIds,
-                        existingByTsdbId, staleByDateTitle, repeatedSignatures);
+                        existingByTsdbId, staleByDateTitle, repeatedSignatures, guideTimedRecordingIds);
                 }
                 catch (Exception ex)
                 {
@@ -2292,6 +2298,65 @@ public class LeagueEventSyncService
     }
 
     /// <summary>
+    /// The scheduled recordings of one league that start where the guide
+    /// starts the event on the recording's channel, away from the event
+    /// start. Their times come from the guide, so the realignment leaves them
+    /// alone. A recording that is merely out of date does not start where the
+    /// guide does, so it is still realigned.
+    /// </summary>
+    internal static async Task<HashSet<int>> FindGuideTimedRecordingIdsAsync(
+        SportarrDbContext db,
+        Dictionary<int, List<DvrRecording>> scheduledRecordingsByEventId,
+        int leagueId,
+        CancellationToken ct)
+    {
+        var result = new HashSet<int>();
+        if (scheduledRecordingsByEventId.Count == 0)
+        {
+            return result;
+        }
+
+        // The matcher needs only the database, and its match logs are debug
+        // lines, so it is built here and the service keeps its constructor.
+        var epgScheduling = new EpgSchedulingService(NullLogger<EpgSchedulingService>.Instance, db);
+        var eventIds = scheduledRecordingsByEventId.Keys.ToList();
+        var events = await db.Events.AsNoTracking().Where(e => e.LeagueId == leagueId && eventIds.Contains(e.Id)).ToDictionaryAsync(e => e.Id, ct);
+        var channelCache = new Dictionary<int, IptvChannel?>();
+
+        foreach (var (eventId, recordings) in scheduledRecordingsByEventId)
+        {
+            if (!events.TryGetValue(eventId, out var evt))
+            {
+                continue;
+            }
+
+            foreach (var rec in recordings.Where(r => r.ScheduledStart != evt.EventDate))
+            {
+                if (!channelCache.TryGetValue(rec.ChannelId, out var channel))
+                {
+                    channel = await db.IptvChannels.AsNoTracking().FirstOrDefaultAsync(c => c.Id == rec.ChannelId, ct);
+                    channelCache[rec.ChannelId] = channel;
+                }
+
+                if (channel == null)
+                {
+                    continue;
+                }
+
+                // A booking takes its start from the guide programme or from
+                // the event start, and this recording is off the event start.
+                var match = await epgScheduling.FindMatchingEpgProgramAsync(evt, channel, ct);
+                if (match != null && match.Program.StartTime == rec.ScheduledStart)
+                {
+                    result.Add(rec.Id);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Move a scheduled recording to a new start and keep its length. The
     /// end and the extension baseline move by the same amount, so a time
     /// change does not count as an extension. The write runs only when the
@@ -2369,7 +2434,8 @@ public class LeagueEventSyncService
         HashSet<string> monitoredTeamIds,
         Dictionary<string, Event>? existingByTsdbId = null,
         Dictionary<string, List<Event>>? staleByDateTitle = null,
-        HashSet<string>? repeatedSignatures = null)
+        HashSet<string>? repeatedSignatures = null,
+        HashSet<int>? guideTimedRecordingIds = null)
     {
         // Two-pass match against the preloaded existence dictionary (one
         // bulk query per season replaces the former one-to-two DB
@@ -2541,6 +2607,15 @@ public class LeagueEventSyncService
             foreach (var rec in scheduledRecordings)
             {
                 if (rec.ScheduledStart == existingEvent.EventDate)
+                {
+                    continue;
+                }
+                // A recording whose times come from the guide is not behind
+                // the event time, it is following the broadcaster. Moving it
+                // back to the event start would undo the guide times on every
+                // sync (#451, #453). A real change of the event date still
+                // moves it.
+                if (!dateChanged && guideTimedRecordingIds != null && guideTimedRecordingIds.Contains(rec.Id))
                 {
                     continue;
                 }

@@ -137,6 +137,7 @@ public class DvrChannelPinTests
                     .AddSingleton(Db)
                     .AddSingleton(configService)
                     .AddSingleton(new EventChannelResolverService(Db, NullLogger<EventChannelResolverService>.Instance))
+                    .AddSingleton(new EpgSchedulingService(NullLogger<EpgSchedulingService>.Instance, Db))
                     .BuildServiceProvider();
                 var service = new DvrChannelReresolveService(services, NullLogger<DvrChannelReresolveService>.Instance);
                 return await service.RunPassAsync();

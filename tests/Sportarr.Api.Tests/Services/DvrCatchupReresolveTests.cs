@@ -110,6 +110,7 @@ public class DvrCatchupReresolveTests
                     .AddSingleton(Db)
                     .AddSingleton(new ConfigService(configuration, NullLogger<ConfigService>.Instance))
                     .AddSingleton(new EventChannelResolverService(Db, NullLogger<EventChannelResolverService>.Instance))
+                    .AddSingleton(new EpgSchedulingService(NullLogger<EpgSchedulingService>.Instance, Db))
                     .BuildServiceProvider();
                 var service = new DvrChannelReresolveService(services, NullLogger<DvrChannelReresolveService>.Instance);
                 return await service.RunPassAsync();
