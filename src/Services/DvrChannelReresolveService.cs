@@ -126,6 +126,7 @@ public class DvrChannelReresolveService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var resolver = scope.ServiceProvider.GetRequiredService<EventChannelResolverService>();
         var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
+        var epgScheduling = scope.ServiceProvider.GetRequiredService<EpgSchedulingService>();
         var config = await configService.GetConfigAsync();
 
         if (!config.DvrReresolveChannelsEnabled)
@@ -173,6 +174,10 @@ public class DvrChannelReresolveService : BackgroundService
                 {
                     WarnIfOnForeignChannel(recording, resolution);
                 }
+
+                // The channel is settled, so the times can follow the guide
+                // on it. This covers a recording that never moved too.
+                await TryFollowGuideTimesAsync(db, epgScheduling, recording, lockWindow, ct);
             }
             catch (Exception ex)
             {
@@ -192,6 +197,102 @@ public class DvrChannelReresolveService : BackgroundService
         }
 
         return moved;
+    }
+
+    /// <summary>
+    /// A recording booked before the guide covered its date holds the default
+    /// window: the event start and EpgSchedulingService.DefaultDurationHours
+    /// after it. When the guide later lists the event on the recording's
+    /// channel, the recording takes the times a booking made after the guide
+    /// filled in would get (#451, #453). Only a recording still on the
+    /// default window changes. Times a user edited, an extended recording and
+    /// a recording the guide does not list all stay as they are. Returns true
+    /// when the times changed.
+    /// </summary>
+    internal static async Task<bool> TryFollowGuideTimesAsync(
+        SportarrDbContext db,
+        EpgSchedulingService epgScheduling,
+        DvrRecording recording,
+        TimeSpan lockWindow,
+        CancellationToken ct)
+    {
+        if (recording.Status != DvrRecordingStatus.Scheduled
+            || recording.OriginalScheduledEnd != null
+            || recording.EventId == null)
+        {
+            return false;
+        }
+
+        var evt = await db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.Id == recording.EventId, ct);
+        if (evt == null)
+        {
+            return false;
+        }
+
+        var defaultEnd = evt.EventDate.AddHours(EpgSchedulingService.DefaultDurationHours);
+        if (recording.ScheduledStart != evt.EventDate || recording.ScheduledEnd != defaultEnd)
+        {
+            return false;
+        }
+
+        var channel = await db.IptvChannels.AsNoTracking().FirstOrDefaultAsync(c => c.Id == recording.ChannelId, ct);
+        if (channel == null)
+        {
+            return false;
+        }
+
+        var times = await epgScheduling.GetOptimizedRecordingTimesAsync(
+            evt, channel, recording.PrePadding, recording.PostPadding, ct);
+        if (!times.UsedEpgData)
+        {
+            return false;
+        }
+
+        // The scheduler books the unpadded times and the recorder adds the
+        // padding when it starts, so the padding that the optimizer adds is
+        // taken off again here.
+        var newStart = times.OptimizedStartTime.AddMinutes(recording.PrePadding);
+        var newEnd = times.OptimizedEndTime.AddMinutes(-recording.PostPadding);
+        // A start inside the lock window is too close for the recorder to
+        // settle on a channel, the same limit the pass uses to pick rows.
+        if (newEnd <= newStart || newStart <= DateTime.UtcNow + lockWindow
+            || (newStart == recording.ScheduledStart && newEnd == recording.ScheduledEnd))
+        {
+            return false;
+        }
+
+        // The write runs only when the row still holds the times that were
+        // read, so it cannot undo an extension or an edit that came in
+        // meanwhile.
+        var oldStart = recording.ScheduledStart;
+        var oldEnd = recording.ScheduledEnd;
+        var now = DateTime.UtcNow;
+        var changed = await db.DvrRecordings
+            .Where(r => r.Id == recording.Id && r.Status == DvrRecordingStatus.Scheduled
+                        && r.ScheduledStart == oldStart && r.ScheduledEnd == oldEnd
+                        && r.OriginalScheduledEnd == null)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(r => r.ScheduledStart, newStart)
+                .SetProperty(r => r.ScheduledEnd, newEnd)
+                .SetProperty(r => r.LastUpdated, now), ct);
+        if (changed != 1)
+        {
+            return false;
+        }
+
+        // The tracked row gets the new times as saved values, so a later
+        // save in this pass does not write them again.
+        var entry = db.Entry(recording);
+        recording.ScheduledStart = newStart;
+        recording.ScheduledEnd = newEnd;
+        recording.LastUpdated = now;
+        foreach (var property in new[] { "ScheduledStart", "ScheduledEnd", "LastUpdated" })
+        {
+            entry.Property(property).OriginalValue = entry.Property(property).CurrentValue;
+            entry.Property(property).IsModified = false;
+        }
+
+        return true;
     }
 
     // A recording left on a slot that names another match will record the
